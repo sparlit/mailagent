@@ -12,9 +12,10 @@ class Database:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute('''
                     CREATE TABLE IF NOT EXISTS processed_messages (
-                        message_id TEXT PRIMARY KEY,
+                        message_id TEXT,
                         account_email TEXT,
-                        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (message_id, account_email)
                     )
                 ''')
                 conn.execute('''
@@ -28,16 +29,16 @@ class Database:
                 ''')
                 conn.commit()
 
-    def is_processed(self, message_id):
+    def is_processed(self, message_id, account_email):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
-                    'SELECT 1 FROM processed_messages WHERE message_id = ?',
-                    (message_id,)
+                    'SELECT 1 FROM processed_messages WHERE message_id = ? AND account_email = ?',
+                    (message_id, account_email)
                 )
                 return cursor.fetchone() is not None
 
-    def mark_as_processed(self, message_id, account_email=None):
+    def mark_as_processed(self, message_id, account_email):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(

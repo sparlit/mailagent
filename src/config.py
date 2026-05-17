@@ -4,12 +4,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def get_bool_env(key, default):
+    val = os.getenv(key, str(default)).lower()
+    return val in ('true', '1', 't', 'y', 'yes')
+
 # ACCOUNTS_JSON should be a string containing a list of objects:
 # [{"credentials": "creds1.json", "token": "token1.json"}, ...]
 ACCOUNTS_JSON = os.getenv('GMAIL_ACCOUNTS', '[{"credentials": "credentials.json", "token": "token.json"}]')
 CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))
 MAX_WORKERS = int(os.getenv('MAX_WORKERS', '10'))
 RULES_PATH = os.getenv('RULES_PATH', 'rules.json')
+DRY_RUN = get_bool_env('DRY_RUN', False)
+DASHBOARD_ENABLED = get_bool_env('DASHBOARD_ENABLED', True)
+DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
 
 def get_accounts():
     try:

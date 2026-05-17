@@ -1,0 +1,142 @@
+{
+  "name": "Autonomous Mail Agent - Multi-Team Management",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "project",
+              "value": "Autonomous Mail Agent"
+            },
+            {
+              "name": "core_principle",
+              "value": "100% FOSS"
+            }
+          ]
+        }
+      },
+      "name": "Initialize Project",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": "asst_project_manager",
+        "prompt": "=TASK: {{ $json.project }}\nCORE PRINCIPLE: {{ $json.core_principle }}\n\nStep 1: Analyze project for gaps/blind spots/dead ends.\nStep 2: Assign fixes to Team Leaders.\nStep 3: Ensure Multi-Thread Parallel Processing and no feature removals."
+      },
+      "name": "Project Manager",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "fieldToSplit": "tasks",
+        "options": {}
+      },
+      "name": "Divide into Tasks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": "asst_team_leader",
+        "prompt": "=Assign the following task to 3 team members: {{ $json.task_name }}\n\nReport progress back to Project Manager."
+      },
+      "name": "Team Leader",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [800, 0]
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": "asst_team_member_1",
+        "prompt": "=Execute Sub-Task 1: {{ $json.subtask_1 }}"
+      },
+      "name": "Member 1",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1000, -100]
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": "asst_team_member_2",
+        "prompt": "=Execute Sub-Task 2: {{ $json.subtask_2 }}"
+      },
+      "name": "Member 2",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1000, 0]
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": "asst_team_member_3",
+        "prompt": "=Execute Sub-Task 3: {{ $json.subtask_3 }}"
+      },
+      "name": "Member 3",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1000, 100]
+    },
+    {
+      "parameters": {
+        "operation": "merge",
+        "mode": "combine"
+      },
+      "name": "Consolidate Work",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [1200, 0]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Repeat Loop",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1400, 0]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Initialize Project", "type": "main", "index": 0 }]] },
+    "Initialize Project": { "main": [[{ "node": "Project Manager", "type": "main", "index": 0 }]] },
+    "Project Manager": { "main": [[{ "node": "Divide into Tasks", "type": "main", "index": 0 }]] },
+    "Divide into Tasks": { "main": [[{ "node": "Team Leader", "type": "main", "index": 0 }]] },
+    "Team Leader": { "main": [
+        [{ "node": "Member 1", "type": "main", "index": 0 }],
+        [{ "node": "Member 2", "type": "main", "index": 0 }],
+        [{ "node": "Member 3", "type": "main", "index": 0 }]
+      ]
+    },
+    "Member 1": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
+    "Member 2": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
+    "Member 3": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
+    "Consolidate Work": { "main": [[{ "node": "Repeat Loop", "type": "main", "index": 0 }]] },
+    "Repeat Loop": { "main": [[{ "node": "Initialize Project", "type": "main", "index": 0 }]] }
+  }
+}

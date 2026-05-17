@@ -6,27 +6,38 @@ from .gmail_client import GmailClient
 from .classifier import EmailClassifier
 from .database import Database
 from .dashboard import run_dashboard
+from . import config
 
 class MailAgent:
-    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10):
+    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=None):
         self.gmail_clients = gmail_clients
         self.classifier = classifier
         self.db = db
         self.max_workers = max_workers
+        self.dry_run = dry_run if dry_run is not None else config.DRY_RUN
 
     def execute_actions(self, client, msg_id, category, actions):
         """Execute a list of actions for a message and record stats."""
         for action in actions:
             try:
-                if action == 'trash':
-                    client.move_to_trash(msg_id)
-                    logging.info(f"Action 'trash' executed for {msg_id}")
-                elif action == 'label':
-                    client.apply_labels(msg_id, [category])
-                    logging.info(f"Action 'label' ({category}) executed for {msg_id}")
-                elif action == 'mark_read':
-                    client.mark_as_read(msg_id)
-                    logging.info(f"Action 'mark_read' executed for {msg_id}")
+                if self.dry_run:
+                    logging.info(f"[DRY RUN] Would execute action '{action}' for {msg_id}")
+                else:
+                    if action == 'trash':
+                        client.move_to_trash(msg_id)
+                        logging.info(f"Action 'trash' executed for {msg_id}")
+                    elif action == 'label':
+                        client.apply_labels(msg_id, [category])
+                        logging.info(f"Action 'label' ({category}) executed for {msg_id}")
+                    elif action == 'mark_read':
+                        client.mark_as_read(msg_id)
+                        logging.info(f"Action 'mark_read' executed for {msg_id}")
+                    elif action == 'archive':
+                        client.archive(msg_id)
+                        logging.info(f"Action 'archive' executed for {msg_id}")
+                    elif action == 'star':
+                        client.star(msg_id)
+                        logging.info(f"Action 'star' executed for {msg_id}")
 
                 # Record statistic
                 self.db.record_stat(client.email_address, action, category)
@@ -37,8 +48,8 @@ class MailAgent:
         """Process a single message for a specific client."""
         msg_id = msg_meta['id']
 
-        if self.db.is_processed(msg_id):
-            logging.info(f"Message {msg_id} already processed. Skipping.")
+        if self.db.is_processed(msg_id, account_email=gmail_client.email_address):
+            logging.info(f"Message {msg_id} already processed for {gmail_client.email_address}. Skipping.")
             return msg_id, None
 
         try:
@@ -76,20 +87,29 @@ class MailAgent:
                     logging.error(f"Error listing messages for {client.email_address}: {e}")
 
             for future in as_completed(all_tasks):
-                msg_id, category = future.result()
-                if category:
-                    logging.info(f"Finished processing message {msg_id}")
+                try:
+                    msg_id, category = future.result()
+                    if category:
+                        logging.info(f"Finished processing message {msg_id}")
+                except Exception as e:
+                    logging.error(f"Task generated an exception: {e}")
 
-    def run_forever(self, interval=60, start_dashboard=False):
+    def run_forever(self, interval=60, start_dashboard=None):
         """Run the agent in a loop."""
-        if start_dashboard:
-            logging.info("Starting Dashboard thread...")
-            dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
+        should_start_dashboard = start_dashboard if start_dashboard is not None else config.DASHBOARD_ENABLED
+        if should_start_dashboard:
+            logging.info(f"Starting Dashboard thread on port {config.DASHBOARD_PORT}...")
+            dashboard_thread = threading.Thread(
+                target=run_dashboard,
+                kwargs={'port': config.DASHBOARD_PORT},
+                daemon=True
+            )
             dashboard_thread.start()
 
         logging.info("Starting MailAgent loop with persistence, stats and dynamic actions...")
         while True:
             try:
+                self.classifier.reload_rules()
                 self.run_once()
             except Exception as e:
                 logging.error(f"Error in MailAgent loop: {e}")

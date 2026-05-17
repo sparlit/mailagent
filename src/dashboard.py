@@ -9,16 +9,21 @@ HTML_TEMPLATE = '''
 <html>
 <head>
     <title>MailAgent Dashboard</title>
+    <meta http-equiv="refresh" content="30">
     <style>
         body { font-family: sans-serif; margin: 40px; }
         table { border-collapse: collapse; width: 100%; }
         th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
         tr:hover { background-color: #f5f5f5; }
         .stats-container { margin-top: 20px; }
+        .summary { font-size: 1.2em; margin-bottom: 20px; }
     </style>
 </head>
 <body>
     <h1>MailAgent Autonomous AI Dashboard</h1>
+    <div class="summary">
+        Monitoring <strong>{{ account_count }}</strong> unique Gmail accounts.
+    </div>
     <div class="stats-container">
         <h2>Action Statistics</h2>
         <table>
@@ -45,7 +50,8 @@ HTML_TEMPLATE = '''
 @app.route('/')
 def index():
     stats = db.get_stats()
-    return render_template_string(HTML_TEMPLATE, stats=stats)
+    unique_accounts = set(stat[0] for stat in stats)
+    return render_template_string(HTML_TEMPLATE, stats=stats, account_count=len(unique_accounts))
 
 @app.route('/api/stats')
 def api_stats():

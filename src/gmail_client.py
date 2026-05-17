@@ -148,6 +148,28 @@ class GmailClient:
         return self.service.users().messages().trash(userId=user_id, id=message_id).execute()
 
     @retry_with_backoff()
+    def star(self, message_id, user_id='me'):
+        """Star a message by adding the STARRED label."""
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'addLabelIds': ['STARRED']
+            }
+        ).execute()
+
+    @retry_with_backoff()
+    def archive(self, message_id, user_id='me'):
+        """Archive a message by removing the INBOX label."""
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'removeLabelIds': ['INBOX']
+            }
+        ).execute()
+
+    @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):
         """Apply specific labels to a message, creating them if they don't exist."""
         existing_label_names = self._get_labels()

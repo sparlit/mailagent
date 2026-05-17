@@ -1,0 +1,6 @@
+interface:
+  display_name: "Mailagent"
+  short_description: "Repo-specific patterns and workflows for mailagent"
+  default_prompt: "Use the mailagent repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true

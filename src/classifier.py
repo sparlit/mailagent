@@ -1,32 +1,34 @@
 import re
 import json
 import os
+import logging
 
 class EmailClassifier:
     def __init__(self, rules_path='rules.json'):
         self.rules_path = rules_path
-        self.patterns = self._load_rules()
+        self.rules = self._load_rules()
 
     def _load_rules(self):
-        patterns = {
-            'SPAM': [],
-            'SOCIAL': [],
-            'UPDATES': []
-        }
+        compiled_rules = {}
         if os.path.exists(self.rules_path):
             try:
                 with open(self.rules_path, 'r') as f:
-                    rules = json.load(f)
-                    for category, regex_list in rules.items():
-                        patterns[category] = [re.compile(r, re.I) for r in regex_list]
+                    raw_rules = json.load(f)
+                    for category, config in raw_rules.items():
+                        patterns = [re.compile(p, re.I) for p in config.get('patterns', [])]
+                        actions = config.get('actions', [])
+                        compiled_rules[category] = {
+                            'patterns': patterns,
+                            'actions': actions
+                        }
             except (json.JSONDecodeError, Exception) as e:
-                print(f"Error loading rules from {self.rules_path}: {e}")
-        return patterns
+                logging.error(f"Error loading rules from {self.rules_path}: {e}")
+        return compiled_rules
 
     def classify(self, message):
         """
         Classify an email based on its metadata and snippet.
-        Returns a suggested label or action.
+        Returns the category name and its associated actions.
         """
         snippet = message.get('snippet', '')
         payload = message.get('payload', {})
@@ -42,20 +44,13 @@ class EmailClassifier:
 
         text_to_analyze = f"{subject} {snippet}"
 
-        # Check for spam
-        for pattern in self.patterns.get('SPAM', []):
-            if pattern.search(text_to_analyze):
-                return 'SPAM'
+        for category, config in self.rules.items():
+            for pattern in config['patterns']:
+                if category == 'SOCIAL':
+                    if pattern.search(sender):
+                        return category, config['actions']
 
-        # Check for social (check sender specifically)
-        for pattern in self.patterns.get('SOCIAL', []):
-            if pattern.search(sender):
-                return 'SOCIAL'
+                if pattern.search(text_to_analyze):
+                    return category, config['actions']
 
-        # Check for updates
-        for pattern in self.patterns.get('UPDATES', []):
-            if pattern.search(text_to_analyze):
-                return 'UPDATES'
-
-        # Default to INBOX
-        return 'INBOX'
+        return 'INBOX', []

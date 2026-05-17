@@ -1,30 +1,39 @@
 {
-  "SPAM": [
-    "lottery prize",
-    "winner of our lucky draw",
-    "crypto (giveaway|bonus|airdrop)",
-    "congratulations! you won",
-    "account suspended.*verify now",
-    "urgent.*action required.*(bank|account)",
-    "unclaimed (money|funds)"
-  ],
-  "SOCIAL": [
-    "facebook",
-    "twitter",
-    "linkedin",
-    "instagram",
-    "pinterest",
-    "tiktok"
-  ],
-  "UPDATES": [
-    "newsletter",
-    "receipt",
-    "invoice",
-    "order",
-    "shipping",
-    "track.*package",
-    "statement",
-    "bill.*due",
-    "payment (received|confirmed)"
-  ]
+  "SPAM": {
+    "patterns": [
+      "lottery prize",
+      "winner of our lucky draw",
+      "crypto (giveaway|bonus|airdrop)",
+      "congratulations! you won",
+      "account suspended.*verify now",
+      "urgent.*action required.*(bank|account)",
+      "unclaimed (money|funds)"
+    ],
+    "actions": ["trash"]
+  },
+  "SOCIAL": {
+    "patterns": [
+      "facebook",
+      "twitter",
+      "linkedin",
+      "instagram",
+      "pinterest",
+      "tiktok"
+    ],
+    "actions": ["label", "mark_read"]
+  },
+  "UPDATES": {
+    "patterns": [
+      "newsletter",
+      "receipt",
+      "invoice",
+      "order",
+      "shipping",
+      "track.*package",
+      "statement",
+      "bill.*due",
+      "payment (received|confirmed)"
+    ],
+    "actions": ["label", "mark_read"]
+  }
 }

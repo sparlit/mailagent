@@ -3,6 +3,7 @@ import os.path
 import time
 import random
 import threading
+import logging
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -22,7 +23,7 @@ def retry_with_backoff(max_retries=5):
                 except HttpError as error:
                     if error.resp.status in [429, 500, 502, 503, 504]:
                         wait_time = (2 ** retries) + random.random()
-                        print(f"Retry {retries + 1}/{max_retries} after {wait_time:.2f}s due to error: {error}")
+                        logging.warning(f"Retry {retries + 1}/{max_retries} after {wait_time:.2f}s due to error: {error}")
                         time.sleep(wait_time)
                         retries += 1
                     else:
@@ -53,6 +54,8 @@ class GmailClient:
                     raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_path, SCOPES)
+                # In a real autonomous headless environment, we'd use flow.run_console()
+                # but it is deprecated. Standard flow is run_local_server.
                 creds = flow.run_local_server(port=0)
             with open(self.token_path, 'w') as token:
                 token.write(creds.to_json())
@@ -77,7 +80,6 @@ class GmailClient:
     @retry_with_backoff()
     def list_unread_messages(self, user_id='me'):
         """List all unread messages, handling pagination."""
-        # Invalidate cache at the start of a run to catch any new labels
         with self._labels_lock:
             self._labels_cache = None
 
@@ -139,11 +141,10 @@ class GmailClient:
                     ).execute()
                     label_id = new_label['id']
                     final_label_ids.append(label_id)
-                    # Update cache
                     with self._labels_lock:
                         self._labels_cache[label_name] = label_id
                 except Exception as e:
-                    print(f"Error creating label {label_name}: {e}")
+                    logging.error(f"Error creating label {label_name}: {e}")
 
         if not final_label_ids:
             return

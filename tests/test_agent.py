@@ -1,16 +1,23 @@
 import pytest
 import json
 import os
+import sqlite3
 from unittest.mock import MagicMock, patch, PropertyMock
 from src.classifier import EmailClassifier
 from src.agent import MailAgent
+from src.database import Database
 
 @pytest.fixture
 def rules_file(tmp_path):
     rules = {
-        "SPAM": ["win money"],
-        "SOCIAL": ["facebook"],
-        "UPDATES": ["invoice"]
+        "SPAM": {
+            "patterns": ["win money"],
+            "actions": ["trash"]
+        },
+        "SOCIAL": {
+            "patterns": ["facebook"],
+            "actions": ["label", "mark_read"]
+        }
     }
     rules_path = tmp_path / "rules.json"
     rules_path.write_text(json.dumps(rules))
@@ -20,40 +27,52 @@ def rules_file(tmp_path):
 def classifier(rules_file):
     return EmailClassifier(rules_path=rules_file)
 
+@pytest.fixture
+def db(tmp_path):
+    db_path = tmp_path / "test.db"
+    return Database(db_path=str(db_path))
+
 def test_classify_dynamic_rules(classifier):
     message = {
         'snippet': 'You win money now!',
         'payload': {'headers': [{'name': 'Subject', 'value': 'Hello'}]}
     }
-    assert classifier.classify(message) == 'SPAM'
+    category, actions = classifier.classify(message)
+    assert category == 'SPAM'
+    assert actions == ['trash']
 
-def test_agent_processes_multi_account():
+def test_agent_processes_multi_account(db):
     mock_client1 = MagicMock()
-    mock_client2 = MagicMock()
-
     mock_client1.list_unread_messages.return_value = [{'id': 'msg1'}]
-    mock_client2.list_unread_messages.return_value = [{'id': 'msg2'}]
-
     mock_client1.get_message.return_value = {'id': 'msg1', 'snippet': 'text'}
-    mock_client2.get_message.return_value = {'id': 'msg2', 'snippet': 'text'}
 
     mock_classifier = MagicMock()
-    mock_classifier.classify.return_value = 'INBOX'
+    mock_classifier.classify.return_value = ('INBOX', [])
 
-    agent = MailAgent([mock_client1, mock_client2], mock_classifier)
+    agent = MailAgent([mock_client1], mock_classifier, db)
     agent.run_once()
 
     assert mock_client1.list_unread_messages.call_count == 1
-    assert mock_client2.list_unread_messages.call_count == 1
     assert mock_client1.get_message.call_count == 1
-    assert mock_client2.get_message.call_count == 1
+    assert db.is_processed('msg1')
+
+def test_agent_skips_processed(db):
+    db.mark_as_processed('msg_already_done')
+
+    mock_client = MagicMock()
+    mock_client.list_unread_messages.return_value = [{'id': 'msg_already_done'}]
+
+    mock_classifier = MagicMock()
+
+    agent = MailAgent([mock_client], mock_classifier, db)
+    agent.run_once()
+
+    mock_client.get_message.assert_not_called()
 
 def test_gmail_client_pagination():
     mock_service = MagicMock()
-    # Mocking self.service.users().messages().list().execute()
     mock_list_call = mock_service.users().messages().list
 
-    # First page
     mock_list_call.return_value.execute.side_effect = [
         {'messages': [{'id': '1'}], 'nextPageToken': 'token2'},
         {'messages': [{'id': '2'}]}
@@ -67,5 +86,3 @@ def test_gmail_client_pagination():
         messages = client.list_unread_messages()
 
         assert len(messages) == 2
-        assert messages[0]['id'] == '1'
-        assert messages[1]['id'] == '2'

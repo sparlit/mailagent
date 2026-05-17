@@ -13,6 +13,11 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 def main():
+    """
+    Bootstrap and run the mail-processing application.
+    
+    Initializes logging and signal handlers for graceful shutdown, loads configured Gmail accounts and constructs shared dependencies (database and email classifier). Attempts to initialize a Gmail client for each account, logging failures per-account; if no clients are successfully created, exits with status 1. Constructs and starts the MailAgent's continuous processing loop using configured check interval and dashboard option. On any other unexpected initialization error, logs the error and exits with status 1.
+    """
     setup_logging()
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

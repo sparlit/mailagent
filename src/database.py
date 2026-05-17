@@ -8,6 +8,11 @@ class Database:
         self._init_db()
 
     def _init_db(self):
+        """
+        Ensure the SQLite database at self.db_path contains the required schema for the application.
+        
+        Creates the `processed_messages` table (columns: `message_id`, `account_email`, `processed_at` with a default of the current timestamp) with a composite primary key on `(message_id, account_email)`, and the `stats` table (columns: `account_email`, `action`, `category`, `count` with default 0) with a composite primary key on `(account_email, action, category)`. The operation is performed under the instance lock and commits any schema changes.
+        """
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute('''
@@ -30,6 +35,16 @@ class Database:
                 conn.commit()
 
     def is_processed(self, message_id, account_email):
+        """
+        Determine whether a specific message has already been recorded as processed for the given account.
+        
+        Parameters:
+            message_id (str): The unique identifier of the message to check.
+            account_email (str): The account email associated with the message.
+        
+        Returns:
+            True if a record exists for the given message_id and account_email, False otherwise.
+        """
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(

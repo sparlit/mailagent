@@ -9,6 +9,19 @@ from src.database import Database
 
 @pytest.fixture
 def rules_file(tmp_path):
+    """
+    Create a temporary JSON rules file for tests and return its path.
+    
+    The file contains two rule categories:
+    - "SPAM": matches the phrase "win money", a header rule `X-Spam: YES`, and action `["trash"]`.
+    - "SOCIAL": matches the phrase "facebook" with actions `["label", "mark_read"]`.
+    
+    Parameters:
+        tmp_path (pathlib.Path): pytest temporary directory provided by the `tmp_path` fixture.
+    
+    Returns:
+        str: Filesystem path to the created JSON rules file.
+    """
     rules = {
         "SPAM": {
             "patterns": ["win money"],
@@ -26,10 +39,30 @@ def rules_file(tmp_path):
 
 @pytest.fixture
 def classifier(rules_file):
+    """
+    Create an EmailClassifier configured with the rules at the given file path.
+    
+    Parameters:
+        rules_file (str): Path to the JSON rules file used to initialize the classifier.
+    
+    Returns:
+        EmailClassifier: An instance configured to load rules from `rules_file`.
+    """
     return EmailClassifier(rules_path=rules_file)
 
 @pytest.fixture
 def db(tmp_path):
+    """
+    Pytest fixture that creates and returns a Database instance backed by a temporary SQLite file.
+    
+    Creates a file named `test.db` inside `tmp_path` and returns a Database configured to use that path.
+    
+    Parameters:
+        tmp_path (pathlib.Path): Temporary directory provided by pytest.
+    
+    Returns:
+        Database: A Database instance pointing at the created `test.db` file.
+    """
     db_path = tmp_path / "test.db"
     return Database(db_path=str(db_path))
 
@@ -67,6 +100,11 @@ def test_agent_records_stats(db):
     assert stats[0][3] == 1
 
 def test_gmail_client_env_credentials():
+    """
+    Verifies that GmailClient loads OAuth token data provided via the GMAIL_TOKEN_TOKEN_JSON environment variable into its credentials.
+    
+    Patches environment and filesystem checks so that a supplied token JSON is used, constructs a GmailClient with a token_path, and asserts the client's credential token equals the token value from the provided JSON.
+    """
     from src.gmail_client import GmailClient
     token_data = {
         "token": "fake-token",

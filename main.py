@@ -9,10 +9,22 @@ from src.logger import setup_logging
 from src import config
 
 def signal_handler(sig, frame):
+    """
+    Handle termination signals by logging an informational shutdown message and exiting the process with status code 0.
+    
+    Parameters:
+        sig (int): The signal number received (e.g., SIGINT, SIGTERM).
+        frame (types.FrameType | None): The current stack frame or None.
+    """
     logging.info("Interrupt received, shutting down gracefully...")
     sys.exit(0)
 
 def main():
+    """
+    Configure runtime components and start the mail processing agent loop.
+    
+    Sets up logging and installs SIGINT/SIGTERM handlers for graceful shutdown. Loads Gmail account configurations and attempts to initialize a Gmail client for each account, logging and skipping accounts that fail to initialize. If no clients are successfully created, exits the process with status code 1. On success, constructs the Database, an EmailClassifier (using config.RULES_PATH), and a MailAgent (using config.MAX_WORKERS), then starts the agent's continuous processing loop with interval config.CHECK_INTERVAL. Logs any unexpected startup error and exits the process with status code 1.
+    """
     setup_logging()
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

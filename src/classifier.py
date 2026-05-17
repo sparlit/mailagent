@@ -2,32 +2,15 @@ import re
 import json
 import os
 import logging
+from .bayesian_filter import BayesianFilter
 
 class EmailClassifier:
-    def __init__(self, rules_path='rules.json'):
-        """
-        Initialize an EmailClassifier and load classification rules from a JSON file.
-        
-        Parameters:
-            rules_path (str): Filesystem path to a JSON rules file (default: 'rules.json'). The file is parsed and its rule definitions are compiled into the instance's `rules`.
-        """
+    def __init__(self, rules_path='rules.json', bayesian_model_path='bayesian_model.json'):
         self.rules_path = rules_path
         self.rules = self._load_rules()
+        self.bayesian = BayesianFilter(model_path=bayesian_model_path)
 
     def _load_rules(self):
-        """
-        Load classification rules from the configured JSON file and compile them for use.
-        
-        Parses the JSON at self.rules_path (if it exists) and returns a mapping of category names to prepared rule configs. Each config contains:
-        - `patterns`: list of case-insensitive compiled regex objects from the category's `patterns`.
-        - `header_rules`: list of dicts with `name` (lowercased header name) and a case-insensitive compiled regex `pattern`.
-        - `actions`: the category's `actions` list (defaults to empty list).
-        
-        If the rules file does not exist, or if parsing/processing fails, an empty dict (or whatever was successfully compiled before the error) is returned and an error is logged.
-        
-        Returns:
-            dict: Mapping of category -> {'patterns': [re.Pattern, ...], 'header_rules': [{'name': str, 'pattern': re.Pattern}, ...], 'actions': list}
-        """
         compiled_rules = {}
         if os.path.exists(self.rules_path):
             try:
@@ -53,19 +36,10 @@ class EmailClassifier:
 
     def classify(self, message):
         """
-        Determine an email's category and associated actions using configured header rules and regex patterns.
-        
-        The classifier examines headers (case-insensitive by name), the message subject, and a message snippet. Header-specific rules are evaluated first and take precedence; if a header rule matches its header value the corresponding category and actions are returned. For general patterns, patterns in the "SOCIAL" category are matched against the sender (the `From` header); all other patterns are matched against the concatenation of subject and snippet. The first matching rule wins.
-        
-        Parameters:
-            message (dict): Email representation with optional keys:
-                - 'snippet' (str): short text excerpt of the message.
-                - 'payload' (dict): message payload containing 'headers' (list of dicts with 'name' and 'value').
-        
-        Returns:
-            tuple: A pair (category, actions) where `category` is the matched category string and `actions` is the list of actions from that category's config. If no rules match, returns ('INBOX', []).
+        Classify an email based on its metadata, snippet, and full body.
         """
         snippet = message.get('snippet', '')
+        full_body = message.get('full_body', '')
         payload = message.get('payload', {})
         headers = payload.get('headers', [])
 
@@ -73,16 +47,18 @@ class EmailClassifier:
         subject = header_dict.get('subject', '')
         sender = header_dict.get('from', '')
 
-        text_to_analyze = f"{subject} {snippet}"
+        # Analyze subject, snippet, and full body
+        text_to_analyze = f"{subject} {snippet} {full_body}"
 
+        # 1. Check Header Rules (High Priority)
         for category, config in self.rules.items():
-            # 1. Check Header Rules (High Priority)
             for hr in config.get('header_rules', []):
                 val = header_dict.get(hr['name'])
                 if val and hr['pattern'].search(val):
                     return category, config['actions']
 
-            # 2. Check General Patterns
+        # 2. Check General Patterns
+        for category, config in self.rules.items():
             for pattern in config['patterns']:
                 if category == 'SOCIAL':
                     if pattern.search(sender):
@@ -90,5 +66,11 @@ class EmailClassifier:
 
                 if pattern.search(text_to_analyze):
                     return category, config['actions']
+
+        # 3. Bayesian Classification for Spam (Secondary)
+        spam_probability = self.bayesian.predict(text_to_analyze)
+        if spam_probability > 0.9:
+            logging.info(f"Bayesian filter triggered: Spam probability {spam_probability:.2f}")
+            return 'SPAM', self.rules.get('SPAM', {}).get('actions', ['trash'])
 
         return 'INBOX', []

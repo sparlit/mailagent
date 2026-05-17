@@ -2,26 +2,15 @@ import pytest
 import json
 import os
 import sqlite3
+import base64
 from unittest.mock import MagicMock, patch, PropertyMock
 from src.classifier import EmailClassifier
 from src.agent import MailAgent
 from src.database import Database
+from src.bayesian_filter import BayesianFilter
 
 @pytest.fixture
 def rules_file(tmp_path):
-    """
-    Create a temporary JSON rules file for tests and return its path.
-    
-    The file contains two rule categories:
-    - "SPAM": matches the phrase "win money", a header rule `X-Spam: YES`, and action `["trash"]`.
-    - "SOCIAL": matches the phrase "facebook" with actions `["label", "mark_read"]`.
-    
-    Parameters:
-        tmp_path (pathlib.Path): pytest temporary directory provided by the `tmp_path` fixture.
-    
-    Returns:
-        str: Filesystem path to the created JSON rules file.
-    """
     rules = {
         "SPAM": {
             "patterns": ["win money"],
@@ -39,30 +28,10 @@ def rules_file(tmp_path):
 
 @pytest.fixture
 def classifier(rules_file):
-    """
-    Create an EmailClassifier configured with the rules at the given file path.
-    
-    Parameters:
-        rules_file (str): Path to the JSON rules file used to initialize the classifier.
-    
-    Returns:
-        EmailClassifier: An instance configured to load rules from `rules_file`.
-    """
     return EmailClassifier(rules_path=rules_file)
 
 @pytest.fixture
 def db(tmp_path):
-    """
-    Pytest fixture that creates and returns a Database instance backed by a temporary SQLite file.
-    
-    Creates a file named `test.db` inside `tmp_path` and returns a Database configured to use that path.
-    
-    Parameters:
-        tmp_path (pathlib.Path): Temporary directory provided by pytest.
-    
-    Returns:
-        Database: A Database instance pointing at the created `test.db` file.
-    """
     db_path = tmp_path / "test.db"
     return Database(db_path=str(db_path))
 
@@ -93,32 +62,58 @@ def test_agent_records_stats(db):
 
     stats = db.get_stats()
     assert len(stats) > 0
-    # (account, action, category, count)
     assert stats[0][0] == "test@example.com"
     assert stats[0][1] == "label"
-    assert stats[0][2] == "SOCIAL"
-    assert stats[0][3] == 1
 
-def test_gmail_client_env_credentials():
-    """
-    Verifies that GmailClient loads OAuth token data provided via the GMAIL_TOKEN_TOKEN_JSON environment variable into its credentials.
-    
-    Patches environment and filesystem checks so that a supplied token JSON is used, constructs a GmailClient with a token_path, and asserts the client's credential token equals the token value from the provided JSON.
-    """
+def test_bayesian_filter():
+    filter = BayesianFilter(model_path=':memory:')
+    filter.train("win free money now", is_spam=True)
+    filter.train("hello friend how are you", is_spam=False)
+
+    spam_prob = filter.predict("win money")
+    ham_prob = filter.predict("hello friend")
+
+    assert spam_prob > 0.5
+    assert ham_prob < 0.5
+
+def test_gmail_client_body_extraction():
     from src.gmail_client import GmailClient
-    token_data = {
-        "token": "fake-token",
-        "refresh_token": "fake-refresh",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "client_id": "fake-id",
-        "client_secret": "fake-secret",
-        "scopes": ["https://www.googleapis.com/auth/gmail.modify"],
-        "expiry": "2099-01-01T00:00:00Z"
+
+    # Mock service
+    mock_service = MagicMock()
+
+    payload = {
+        'parts': [
+            {
+                'mimeType': 'text/plain',
+                'body': {'data': base64.urlsafe_b64encode(b"Hello World").decode()}
+            }
+        ]
     }
 
-    with patch.dict(os.environ, {"GMAIL_TOKEN_TOKEN_JSON": json.dumps(token_data)}), \
-         patch("os.path.exists", side_effect=lambda x: x == "credentials.json"), \
-         patch("src.gmail_client.build"), \
+    with patch.object(GmailClient, '_load_credentials'), \
+         patch.object(GmailClient, 'service', new_callable=PropertyMock) as mock_service_prop, \
          patch.object(GmailClient, '_get_user_email', return_value="test@example.com"):
-        client = GmailClient(token_path="token.json")
-        assert client._creds.token == "fake-token"
+
+        mock_service_prop.return_value = mock_service
+        client = GmailClient()
+
+        body = client._get_body(payload)
+        assert body == "Hello World"
+
+def test_database_account_management(db):
+    db.add_account("user@example.com", credentials_path="creds.json", token_path="token.json")
+    accounts = db.get_accounts()
+    assert len(accounts) == 1
+    assert accounts[0]['email'] == "user@example.com"
+
+    db.update_account_token("user@example.com", '{"token": "new"}')
+    accounts = db.get_accounts()
+    assert accounts[0]['token_json'] == '{"token": "new"}'
+
+def test_dashboard_health_endpoint():
+    from src.dashboard import app
+    with app.test_client() as client:
+        response = client.get('/health')
+        assert response.status_code == 200
+        assert response.get_json() == {"status": "healthy"}

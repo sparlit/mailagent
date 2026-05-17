@@ -44,34 +44,17 @@ HTML_TEMPLATE = '''
 
 @app.route('/')
 def index():
-    """
-    Render the dashboard HTML populated with current action statistics from the database.
-    
-    Returns:
-        Rendered HTML for the dashboard page.
-    """
     stats = db.get_stats()
     return render_template_string(HTML_TEMPLATE, stats=stats)
 
 @app.route('/api/stats')
 def api_stats():
-    """
-    Serve the collected action statistics as a JSON HTTP response.
-    
-    Returns:
-        A JSON response containing a list of statistics, where each item is a 4-tuple:
-        (account, action, category, count).
-    """
     stats = db.get_stats()
     return jsonify(stats)
 
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy"}), 200
+
 def run_dashboard(port=5000):
-    """
-    Start the Flask dashboard server bound to all network interfaces on the given port.
-    
-    Starts the Flask development server with host '0.0.0.0', debug mode disabled, and the auto-reloader disabled.
-    
-    Parameters:
-        port (int): TCP port to listen on (default: 5000).
-    """
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)

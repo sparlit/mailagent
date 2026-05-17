@@ -3,15 +3,6 @@ from logging.handlers import RotatingFileHandler
 import sys
 
 def setup_logging(log_file='mailagent.log'):
-    """
-    Configure and return the root logger with a console and rotating file handler.
-    
-    Parameters:
-        log_file (str): Path to the log file used by the rotating file handler (default: 'mailagent.log').
-    
-    Returns:
-        logging.Logger: The configured root logger set to INFO with a timestamped formatter, a StreamHandler writing to stdout, and a RotatingFileHandler that rotates at 10 MB with up to 5 backups.
-    """
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 

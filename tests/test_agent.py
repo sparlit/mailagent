@@ -9,6 +9,15 @@ from src.database import Database
 
 @pytest.fixture
 def rules_file(tmp_path):
+    """
+    Create a temporary rules.json file with sample email classification rules and return its path.
+    
+    Parameters:
+        tmp_path (pathlib.Path): pytest temporary directory in which the rules.json will be created.
+    
+    Returns:
+        str: Filesystem path to the created rules.json file.
+    """
     rules = {
         "SPAM": {
             "patterns": ["win money"],
@@ -26,10 +35,25 @@ def rules_file(tmp_path):
 
 @pytest.fixture
 def classifier(rules_file):
+    """
+    Create an EmailClassifier configured from a rules file.
+    
+    Parameters:
+        rules_file (str): Path to a JSON rules file that defines classification rules.
+    
+    Returns:
+        EmailClassifier: Instance configured to use the rules at `rules_file`.
+    """
     return EmailClassifier(rules_path=rules_file)
 
 @pytest.fixture
 def db(tmp_path):
+    """
+    Create a temporary SQLite-backed Database instance for tests.
+    
+    Returns:
+        Database: A Database connected to a `test.db` file located inside the provided `tmp_path`.
+    """
     db_path = tmp_path / "test.db"
     return Database(db_path=str(db_path))
 

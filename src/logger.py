@@ -3,6 +3,15 @@ from logging.handlers import RotatingFileHandler
 import sys
 
 def setup_logging(log_file='mailagent.log'):
+    """
+    Configure the root logger to output INFO-level logs to stdout and to a rotating log file.
+    
+    Parameters:
+        log_file (str): Path to the rotating log file (default 'mailagent.log').
+    
+    Returns:
+        logging.Logger: The configured root logger.
+    """
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 

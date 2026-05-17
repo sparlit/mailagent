@@ -9,6 +9,16 @@ from .dashboard import run_dashboard
 
 class MailAgent:
     def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=False):
+        """
+        Initialize the MailAgent with Gmail account clients, a classifier, and persistence/configuration.
+        
+        Parameters:
+            gmail_clients (list[GmailClient]): Gmail client instances to poll and operate on.
+            classifier (EmailClassifier): Component used to classify fetched messages into categories and actions.
+            db (Database): Persistence layer for recording per-message processed state and action statistics.
+            max_workers (int): Maximum number of worker threads for concurrent message processing.
+            dry_run (bool): If True, do not perform any mutating Gmail operations; actions are only logged.
+        """
         self.gmail_clients = gmail_clients
         self.classifier = classifier
         self.db = db
@@ -16,7 +26,17 @@ class MailAgent:
         self.dry_run = dry_run
 
     def execute_actions(self, client, msg_id, category, actions):
-        """Execute a list of actions for a message and record stats."""
+        """
+        Execute configured Gmail actions for a single message and record per-action statistics.
+        
+        For each action in `actions`, perform the corresponding operation on `client` (or log the intended action when the agent is in dry-run mode) and record a statistic for that action and category. Failures for an individual action are caught and logged; remaining actions continue to run.
+        
+        Parameters:
+            client: Gmail client object used to perform actions; expected to expose `email_address` and methods like `move_to_trash`, `apply_labels`, `mark_as_read`, `archive`, and `star`.
+            msg_id (str): Identifier of the message to act upon.
+            category (str): Category/label name used when applying labels and for recorded statistics.
+            actions (Iterable[str]): Sequence of action names to execute. Supported values: `'trash'`, `'label'`, `'mark_read'`, `'archive'`, `'star'`.
+        """
         for action in actions:
             try:
                 if self.dry_run:
@@ -44,7 +64,17 @@ class MailAgent:
                 logging.error(f"Failed to execute action {action} on {msg_id}: {e}")
 
     def process_message(self, gmail_client, msg_meta):
-        """Process a single message for a specific client."""
+        """
+        Process a single Gmail message for a specific account.
+        
+        Classifies the message, executes any actions returned by the classifier, and marks the message as processed to prevent future handling. If the message was already marked processed or an error occurs during handling, no actions are executed.
+        
+        Parameters:
+        	msg_meta (dict): Message metadata containing at least the key `'id'` with the Gmail message ID.
+        
+        Returns:
+        	tuple: `(msg_id, category)` where `msg_id` is the message ID and `category` is the classification label, or `None` if the message was skipped because it was already processed or an error occurred.
+        """
         msg_id = msg_meta['id']
 
         if self.db.is_processed(msg_id, gmail_client.email_address):
@@ -67,7 +97,11 @@ class MailAgent:
             return msg_id, None
 
     def run_once(self):
-        """Perform a single pass across all configured Gmail accounts."""
+        """
+        Scan all configured Gmail accounts once and process their unread messages.
+        
+        Submits a processing task for each unread message to a ThreadPoolExecutor, waits for all tasks to complete, logs progress for each account and message, and records any errors encountered while listing messages.
+        """
         all_tasks = []
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -91,7 +125,15 @@ class MailAgent:
                     logging.info(f"Finished processing message {msg_id}")
 
     def run_forever(self, interval=60, start_dashboard=False):
-        """Run the agent in a loop."""
+        """
+        Continuously poll configured Gmail accounts to classify unread messages and perform configured actions on a repeating interval.
+        
+        Runs indefinitely until the process is stopped; each loop reloads classifier rules, performs one polling/processing cycle, then sleeps for `interval` seconds.
+        
+        Parameters:
+            interval (int): Seconds to wait between iterations of the processing loop.
+            start_dashboard (bool): If True, start the dashboard in a background daemon thread before entering the loop.
+        """
         if start_dashboard:
             logging.info("Starting Dashboard thread...")
             dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)

@@ -43,6 +43,28 @@ HTML_TEMPLATE = '''
             </tr>
             {% endfor %}
         </table>
+
+        <h2>Category Summary</h2>
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Total Processed</th>
+            </tr>
+            {% set categories = {} %}
+            {% for stat in stats %}
+                {% if stat[2] in categories %}
+                    {% if categories.update({stat[2]: categories[stat[2]] + stat[3]}) %}{% endif %}
+                {% else %}
+                    {% if categories.update({stat[2]: stat[3]}) %}{% endif %}
+                {% endif %}
+            {% endfor %}
+            {% for cat, count in categories.items() %}
+            <tr>
+                <td>{{ cat }}</td>
+                <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+        </table>
     </div>
 </body>
 </html>
@@ -60,8 +82,7 @@ def index():
     """
     stats = db.get_stats()
     unique_accounts = set(stat[0] for stat in stats)
-    return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=len(unique_accounts))
-    return render_template_string(HTML_TEMPLATE, stats=stats, account_count=len(unique_accounts))
+    return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=len(unique_accounts), account_count=len(unique_accounts))
 
 @app.route('/api/stats')
 def api_stats():

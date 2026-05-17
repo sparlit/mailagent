@@ -20,8 +20,13 @@ Define what happens to each category in `rules.json`. The agent supports:
 - `trash`: Move to trash (ideal for SPAM).
 - `label`: Automatically apply the category as a label (e.g., "SOCIAL").
 - `mark_read`: Mark the email as read to keep your unread count clean.
+- `unstar`: Remove the star from important-looking but non-essential emails.
+- `mark_important`: Explicitly tag emails with Gmail's "IMPORTANT" marker.
 
-### 5. Production-Ready Robustness
+### 5. Hierarchical Team Orchestration
+Includes a sophisticated simulation of a multi-team management structure (CEO, Project Manager, Team Leaders, Agents) to manage project tasks continuously in a 9-step improvement loop.
+
+### 6. Production-Ready Robustness
 - **Persistence:** Uses a local SQLite database to track processed message IDs, ensuring no email is ever processed twice.
 - **Retry Logic:** Implements exponential backoff with jitter to handle Gmail API rate limits (429) and transient network errors.
 - **Label Caching:** Thread-safe caching of Gmail labels to minimize API overhead and stay within quotas.

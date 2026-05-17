@@ -45,7 +45,12 @@ class GmailClient:
         self.email_address = self._get_user_email()
 
     def _get_user_email(self):
-        """Fetch the authenticated user's email address."""
+        """
+        Return the authenticated user's email address.
+        
+        Returns:
+            email (str): The user's email address; returns "unknown" if the profile lacks an emailAddress or if an error occurs while fetching the profile.
+        """
         try:
             profile = self.service.users().getProfile(userId='me').execute()
             email = profile.get('emailAddress')
@@ -148,12 +153,22 @@ class GmailClient:
 
     @retry_with_backoff()
     def move_to_trash(self, message_id, user_id='me'):
-        """Move a message to trash."""
+        """
+        Moves the specified message to the Trash.
+        
+        Returns:
+            dict: The Gmail API response for the trashed message.
+        """
         return self.service.users().messages().trash(userId=user_id, id=message_id).execute()
 
     @retry_with_backoff()
     def archive(self, message_id, user_id='me'):
-        """Archive a message by removing the INBOX label."""
+        """
+        Archive a message by removing the `INBOX` label.
+        
+        Returns:
+            response (dict): The Gmail API response returned by the `batchModify` call.
+        """
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
@@ -164,7 +179,12 @@ class GmailClient:
 
     @retry_with_backoff()
     def star(self, message_id, user_id='me'):
-        """Star a message by adding the STARRED label."""
+        """
+        Star a message by adding Gmail's `STARRED` label.
+        
+        Returns:
+            dict: The Gmail API response for the `batchModify` request.
+        """
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
@@ -175,7 +195,17 @@ class GmailClient:
 
     @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):
-        """Apply specific labels to a message, creating them if they don't exist."""
+        """
+        Apply labels to the specified message, creating any custom labels that do not yet exist.
+        
+        Parameters:
+        	message_id (str): ID of the message to modify.
+        	label_ids (Iterable[str]): Iterable of label names to apply; system/category labels may be provided directly (e.g., 'INBOX', 'STARRED').
+        	user_id (str): User identifier, typically `'me'`.
+        
+        Returns:
+        	dict or None: The Gmail API `batchModify` response when labels were applied, or `None` if no labels were resolved/applied.
+        """
         existing_label_names = self._get_labels()
 
         final_label_ids = []

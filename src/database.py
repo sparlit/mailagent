@@ -17,6 +17,15 @@ class Database:
                         processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS stats (
+                        account_email TEXT,
+                        action TEXT,
+                        category TEXT,
+                        count INTEGER DEFAULT 0,
+                        PRIMARY KEY (account_email, action, category)
+                    )
+                ''')
                 conn.commit()
 
     def is_processed(self, message_id):
@@ -36,3 +45,19 @@ class Database:
                     (message_id, account_email)
                 )
                 conn.commit()
+
+    def record_stat(self, account_email, action, category):
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute('''
+                    INSERT INTO stats (account_email, action, category, count)
+                    VALUES (?, ?, ?, 1)
+                    ON CONFLICT(account_email, action, category) DO UPDATE SET count = count + 1
+                ''', (account_email, action, category))
+                conn.commit()
+
+    def get_stats(self):
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute('SELECT account_email, action, category, count FROM stats')
+                return cursor.fetchall()

@@ -1,9 +1,11 @@
 import time
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .gmail_client import GmailClient
 from .classifier import EmailClassifier
 from .database import Database
+from .dashboard import run_dashboard
 
 class MailAgent:
     def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10):
@@ -13,17 +15,23 @@ class MailAgent:
         self.max_workers = max_workers
 
     def execute_actions(self, client, msg_id, category, actions):
-        """Execute a list of actions for a message."""
+        """Execute a list of actions for a message and record stats."""
         for action in actions:
-            if action == 'trash':
-                client.move_to_trash(msg_id)
-                logging.info(f"Action 'trash' executed for {msg_id}")
-            elif action == 'label':
-                client.apply_labels(msg_id, [category])
-                logging.info(f"Action 'label' ({category}) executed for {msg_id}")
-            elif action == 'mark_read':
-                client.mark_as_read(msg_id)
-                logging.info(f"Action 'mark_read' executed for {msg_id}")
+            try:
+                if action == 'trash':
+                    client.move_to_trash(msg_id)
+                    logging.info(f"Action 'trash' executed for {msg_id}")
+                elif action == 'label':
+                    client.apply_labels(msg_id, [category])
+                    logging.info(f"Action 'label' ({category}) executed for {msg_id}")
+                elif action == 'mark_read':
+                    client.mark_as_read(msg_id)
+                    logging.info(f"Action 'mark_read' executed for {msg_id}")
+
+                # Record statistic
+                self.db.record_stat(client.email_address, action, category)
+            except Exception as e:
+                logging.error(f"Failed to execute action {action} on {msg_id}: {e}")
 
     def process_message(self, gmail_client, msg_meta):
         """Process a single message for a specific client."""
@@ -37,11 +45,12 @@ class MailAgent:
             message = gmail_client.get_message(msg_id)
             category, actions = self.classifier.classify(message)
 
-            logging.info(f"Message {msg_id} classified as: {category} with actions: {actions}")
+            logging.info(f"Message {msg_id} in {gmail_client.email_address} classified as: {category} with actions: {actions}")
 
-            self.execute_actions(gmail_client, msg_id, category, actions)
+            if actions:
+                self.execute_actions(gmail_client, msg_id, category, actions)
 
-            self.db.mark_as_processed(msg_id)
+            self.db.mark_as_processed(msg_id, account_email=gmail_client.email_address)
             return msg_id, category
         except Exception as e:
             logging.error(f"Error processing message {msg_id}: {e}")
@@ -64,16 +73,21 @@ class MailAgent:
                     for msg in messages:
                         all_tasks.append(executor.submit(self.process_message, client, msg))
                 except Exception as e:
-                    logging.error(f"Error listing messages for an account: {e}")
+                    logging.error(f"Error listing messages for {client.email_address}: {e}")
 
             for future in as_completed(all_tasks):
                 msg_id, category = future.result()
                 if category:
                     logging.info(f"Finished processing message {msg_id}")
 
-    def run_forever(self, interval=60):
+    def run_forever(self, interval=60, start_dashboard=False):
         """Run the agent in a loop."""
-        logging.info("Starting MailAgent loop with persistence and dynamic actions...")
+        if start_dashboard:
+            logging.info("Starting Dashboard thread...")
+            dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
+            dashboard_thread.start()
+
+        logging.info("Starting MailAgent loop with persistence, stats and dynamic actions...")
         while True:
             try:
                 self.run_once()

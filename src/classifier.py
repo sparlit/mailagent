@@ -16,10 +16,17 @@ class EmailClassifier:
                     raw_rules = json.load(f)
                     for category, config in raw_rules.items():
                         patterns = [re.compile(p, re.I) for p in config.get('patterns', [])]
-                        actions = config.get('actions', [])
+                        header_rules = []
+                        for hr in config.get('header_rules', []):
+                            header_rules.append({
+                                'name': hr['name'].lower(),
+                                'pattern': re.compile(hr['pattern'], re.I)
+                            })
+
                         compiled_rules[category] = {
                             'patterns': patterns,
-                            'actions': actions
+                            'header_rules': header_rules,
+                            'actions': config.get('actions', [])
                         }
             except (json.JSONDecodeError, Exception) as e:
                 logging.error(f"Error loading rules from {self.rules_path}: {e}")
@@ -28,23 +35,25 @@ class EmailClassifier:
     def classify(self, message):
         """
         Classify an email based on its metadata and snippet.
-        Returns the category name and its associated actions.
         """
         snippet = message.get('snippet', '')
         payload = message.get('payload', {})
         headers = payload.get('headers', [])
 
-        subject = ""
-        sender = ""
-        for header in headers:
-            if header['name'].lower() == 'subject':
-                subject = header['value']
-            if header['name'].lower() == 'from':
-                sender = header['value']
+        header_dict = {h['name'].lower(): h['value'] for h in headers}
+        subject = header_dict.get('subject', '')
+        sender = header_dict.get('from', '')
 
         text_to_analyze = f"{subject} {snippet}"
 
         for category, config in self.rules.items():
+            # 1. Check Header Rules (High Priority)
+            for hr in config.get('header_rules', []):
+                val = header_dict.get(hr['name'])
+                if val and hr['pattern'].search(val):
+                    return category, config['actions']
+
+            # 2. Check General Patterns
             for pattern in config['patterns']:
                 if category == 'SOCIAL':
                     if pattern.search(sender):

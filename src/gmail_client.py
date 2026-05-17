@@ -4,6 +4,7 @@ import time
 import random
 import threading
 import logging
+import json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -54,8 +55,21 @@ class GmailClient:
 
     def _load_credentials(self):
         creds = None
+        # Try loading from token_path
         if os.path.exists(self.token_path):
             creds = Credentials.from_authorized_user_file(self.token_path, SCOPES)
+
+        # Fallback to environment variable for headless environments
+        if not creds:
+            env_token = os.getenv(f'GMAIL_TOKEN_{os.path.basename(self.token_path).upper().replace(".", "_")}')
+            if env_token:
+                try:
+                    token_data = json.loads(env_token)
+                    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+                    logging.info(f"Loaded credentials from environment for {self.token_path}")
+                except Exception as e:
+                    logging.error(f"Failed to load credentials from environment: {e}")
+
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
@@ -64,11 +78,12 @@ class GmailClient:
                     raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_path, SCOPES)
-                # In a real autonomous headless environment, we'd use flow.run_console()
-                # but it is deprecated. Standard flow is run_local_server.
                 creds = flow.run_local_server(port=0)
+
+            # Save the credentials
             with open(self.token_path, 'w') as token:
                 token.write(creds.to_json())
+
         return creds
 
     @property

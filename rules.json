@@ -9,6 +9,9 @@
       "urgent.*action required.*(bank|account)",
       "unclaimed (money|funds)"
     ],
+    "header_rules": [
+      { "name": "X-Spam-Flag", "pattern": "YES" }
+    ],
     "actions": ["trash"]
   },
   "SOCIAL": {
@@ -19,6 +22,9 @@
       "instagram",
       "pinterest",
       "tiktok"
+    ],
+    "header_rules": [
+      { "name": "List-ID", "pattern": "(facebook|twitter|linkedin|instagram)" }
     ],
     "actions": ["label", "mark_read"]
   },
@@ -33,6 +39,9 @@
       "statement",
       "bill.*due",
       "payment (received|confirmed)"
+    ],
+    "header_rules": [
+      { "name": "Precedence", "pattern": "(bulk|list)" }
     ],
     "actions": ["label", "mark_read"]
   }

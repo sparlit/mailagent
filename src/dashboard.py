@@ -21,6 +21,7 @@ HTML_TEMPLATE = '''
 </head>
 <body>
     <h1>MailAgent Autonomous AI Dashboard</h1>
+    <p><strong>{{ accounts_count }}</strong> unique accounts monitored.</p>
     <div class="summary">
         Monitoring <strong>{{ account_count }}</strong> unique Gmail accounts.
     </div>
@@ -49,12 +50,27 @@ HTML_TEMPLATE = '''
 
 @app.route('/')
 def index():
+    """
+    Render the dashboard page showing action statistics and the number of unique monitored accounts.
+    
+    Fetches current stats from the shared database, computes the count of unique accounts from the first element of each stats row, and returns the rendered HTML template populated with `stats` and `accounts_count`.
+    
+    Returns:
+        str: Rendered HTML for the dashboard page containing the stats table and `accounts_count`.
+    """
     stats = db.get_stats()
     unique_accounts = set(stat[0] for stat in stats)
+    return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=len(unique_accounts))
     return render_template_string(HTML_TEMPLATE, stats=stats, account_count=len(unique_accounts))
 
 @app.route('/api/stats')
 def api_stats():
+    """
+    Return JSON-serialized action statistics retrieved from the shared database.
+    
+    Returns:
+    	Flask Response: A JSON response containing the list of statistics as returned by `db.get_stats()`.
+    """
     stats = db.get_stats()
     return jsonify(stats)
 

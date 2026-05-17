@@ -9,6 +9,23 @@ class EmailClassifier:
         self.rules = self._load_rules()
 
     def _load_rules(self):
+        """
+        Load and compile email classification rules from the configured JSON file.
+        
+        If the file at self.rules_path exists, parse it as JSON and compile each category's
+        pattern strings into case-insensitive regular expressions and each header rule into a
+        dict with a lowercased header name and a case-insensitive compiled pattern. On JSON
+        parsing or other errors, log the error and return whatever rules were compiled up to
+        that point (or an empty dict if none).
+        
+        Returns:
+            dict: Mapping of category name to a dict with keys:
+                - 'patterns' (list): compiled regular expression objects for general matching.
+                - 'header_rules' (list): dicts with keys:
+                    - 'name' (str): lowercased header name to match (e.g., 'from', 'subject').
+                    - 'pattern' (re.Pattern): compiled regex for the header value.
+                - 'actions' (list): actions associated with the category from the JSON.
+        """
         compiled_rules = {}
         if os.path.exists(self.rules_path):
             try:
@@ -33,13 +50,28 @@ class EmailClassifier:
         return compiled_rules
 
     def reload_rules(self):
+        """
+        Reloads and recompiles classification rules from the configured rules file into the instance.
+        
+        Replaces the instance's `self.rules` with the freshly loaded and compiled rules from `self.rules_path`.
+        """
         """Re-load and re-compile rules from the filesystem."""
         logging.info(f"Reloading rules from {self.rules_path}")
         self.rules = self._load_rules()
 
     def classify(self, message):
         """
-        Classify an email based on its metadata and snippet.
+        Determine the classification category and associated actions for an email message using the classifier's compiled rules.
+        
+        Header-based rules are evaluated first (highest priority). If no header rule matches for a category, general regex patterns are tested against the sender and the combined subject+snippet text. Matching stops at the first category that matches.
+        
+        Parameters:
+            message (dict): Email data expected to contain optional keys:
+                - 'snippet' (str): short message preview.
+                - 'payload' (dict): may contain 'headers' (list of dicts with 'name' and 'value').
+        
+        Returns:
+            tuple: `(category, actions)` where `category` is the matched category name (str) and `actions` is the list of actions for that category. Returns `('INBOX', [])` if no rules match.
         """
         snippet = message.get('snippet', '')
         payload = message.get('payload', {})
@@ -60,6 +92,7 @@ class EmailClassifier:
 
             # 2. Check General Patterns
             for pattern in config['patterns']:
+                if pattern.search(sender) or pattern.search(text_to_analyze):
                 if pattern.search(sender):
                     return category, config['actions']
 

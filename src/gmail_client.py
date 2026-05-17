@@ -38,6 +38,8 @@ class GmailClient:
         self.credentials_path = credentials_path
         self.token_path = token_path
         self._creds = self._load_credentials()
+        self._labels_cache = None
+        self._labels_lock = threading.Lock()
 
     def _load_credentials(self):
         creds = None
@@ -63,11 +65,38 @@ class GmailClient:
             self._thread_local.service = build('gmail', 'v1', credentials=self._creds)
         return self._thread_local.service
 
+    def _get_labels(self):
+        """Thread-safe label caching."""
+        with self._labels_lock:
+            if self._labels_cache is None:
+                results = self.service.users().labels().list(userId='me').execute()
+                labels = results.get('labels', [])
+                self._labels_cache = {label['name']: label['id'] for label in labels}
+        return self._labels_cache
+
     @retry_with_backoff()
     def list_unread_messages(self, user_id='me'):
-        """List all unread messages."""
-        results = self.service.users().messages().list(userId=user_id, q='is:unread').execute()
-        messages = results.get('messages', [])
+        """List all unread messages, handling pagination."""
+        # Invalidate cache at the start of a run to catch any new labels
+        with self._labels_lock:
+            self._labels_cache = None
+
+        messages = []
+        next_page_token = None
+
+        while True:
+            results = self.service.users().messages().list(
+                userId=user_id,
+                q='is:unread',
+                pageToken=next_page_token
+            ).execute()
+
+            messages.extend(results.get('messages', []))
+            next_page_token = results.get('nextPageToken')
+
+            if not next_page_token:
+                break
+
         return messages
 
     @retry_with_backoff()
@@ -94,8 +123,7 @@ class GmailClient:
     @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):
         """Apply specific labels to a message, creating them if they don't exist."""
-        existing_labels = self.service.users().labels().list(userId=user_id).execute().get('labels', [])
-        existing_label_names = {label['name']: label['id'] for label in existing_labels}
+        existing_label_names = self._get_labels()
 
         final_label_ids = []
         for label_name in label_ids:
@@ -109,7 +137,11 @@ class GmailClient:
                         userId=user_id,
                         body={'name': label_name}
                     ).execute()
-                    final_label_ids.append(new_label['id'])
+                    label_id = new_label['id']
+                    final_label_ids.append(label_id)
+                    # Update cache
+                    with self._labels_lock:
+                        self._labels_cache[label_name] = label_id
                 except Exception as e:
                     print(f"Error creating label {label_name}: {e}")
 

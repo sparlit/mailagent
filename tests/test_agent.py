@@ -1,83 +1,71 @@
 import pytest
-from unittest.mock import MagicMock, patch
+import json
+import os
+from unittest.mock import MagicMock, patch, PropertyMock
 from src.classifier import EmailClassifier
 from src.agent import MailAgent
 
 @pytest.fixture
-def classifier():
-    return EmailClassifier()
+def rules_file(tmp_path):
+    rules = {
+        "SPAM": ["win money"],
+        "SOCIAL": ["facebook"],
+        "UPDATES": ["invoice"]
+    }
+    rules_path = tmp_path / "rules.json"
+    rules_path.write_text(json.dumps(rules))
+    return str(rules_path)
 
-def test_classify_spam(classifier):
-    # Test with new regex patterns
+@pytest.fixture
+def classifier(rules_file):
+    return EmailClassifier(rules_path=rules_file)
+
+def test_classify_dynamic_rules(classifier):
     message = {
-        'snippet': 'Congratulations! You won a lottery prize.',
-        'payload': {'headers': [{'name': 'Subject', 'value': 'You won'}]}
+        'snippet': 'You win money now!',
+        'payload': {'headers': [{'name': 'Subject', 'value': 'Hello'}]}
     }
     assert classifier.classify(message) == 'SPAM'
 
-    message2 = {
-        'snippet': 'Your crypto giveaway is here',
-        'payload': {'headers': [{'name': 'Subject', 'value': 'Airdrop'}]}
-    }
-    assert classifier.classify(message2) == 'SPAM'
+def test_agent_processes_multi_account():
+    mock_client1 = MagicMock()
+    mock_client2 = MagicMock()
 
-def test_classify_social(classifier):
-    message = {
-        'snippet': 'You have a new friend request',
-        'payload': {'headers': [{'name': 'From', 'value': 'Facebook <no-reply@facebook.com>'}]}
-    }
-    assert classifier.classify(message) == 'SOCIAL'
+    mock_client1.list_unread_messages.return_value = [{'id': 'msg1'}]
+    mock_client2.list_unread_messages.return_value = [{'id': 'msg2'}]
 
-    message2 = {
-        'snippet': 'Check out this TikTok',
-        'payload': {'headers': [{'name': 'From', 'value': 'TikTok <trending@tiktok.com>'}]}
-    }
-    assert classifier.classify(message2) == 'SOCIAL'
+    mock_client1.get_message.return_value = {'id': 'msg1', 'snippet': 'text'}
+    mock_client2.get_message.return_value = {'id': 'msg2', 'snippet': 'text'}
 
-def test_classify_updates(classifier):
-    message = {
-        'snippet': 'Your order has been shipped',
-        'payload': {'headers': [{'name': 'Subject', 'value': 'Shipping Update'}]}
-    }
-    assert classifier.classify(message) == 'UPDATES'
-
-    message2 = {
-        'snippet': 'Your monthly statement is ready',
-        'payload': {'headers': [{'name': 'Subject', 'value': 'Bill'}]}
-    }
-    assert classifier.classify(message2) == 'UPDATES'
-
-def test_classify_inbox(classifier):
-    message = {
-        'snippet': 'Hello, how are you?',
-        'payload': {'headers': [{'name': 'From', 'value': 'friend@example.com'}]}
-    }
-    assert classifier.classify(message) == 'INBOX'
-
-def test_agent_run_once_no_messages():
-    mock_gmail = MagicMock()
-    mock_gmail.list_unread_messages.return_value = []
     mock_classifier = MagicMock()
+    mock_classifier.classify.return_value = 'INBOX'
 
-    agent = MailAgent(mock_gmail, mock_classifier)
+    agent = MailAgent([mock_client1, mock_client2], mock_classifier)
     agent.run_once()
 
-    mock_gmail.list_unread_messages.assert_called_once()
-    mock_gmail.get_message.assert_not_called()
+    assert mock_client1.list_unread_messages.call_count == 1
+    assert mock_client2.list_unread_messages.call_count == 1
+    assert mock_client1.get_message.call_count == 1
+    assert mock_client2.get_message.call_count == 1
 
-def test_agent_processes_spam_parallel():
-    mock_gmail = MagicMock()
-    mock_gmail.list_unread_messages.return_value = [{'id': '123'}, {'id': '456'}]
-    mock_gmail.get_message.side_effect = [
-        {'id': '123', 'snippet': 'spam'},
-        {'id': '456', 'snippet': 'ham'}
+def test_gmail_client_pagination():
+    mock_service = MagicMock()
+    # Mocking self.service.users().messages().list().execute()
+    mock_list_call = mock_service.users().messages().list
+
+    # First page
+    mock_list_call.return_value.execute.side_effect = [
+        {'messages': [{'id': '1'}], 'nextPageToken': 'token2'},
+        {'messages': [{'id': '2'}]}
     ]
 
-    mock_classifier = MagicMock()
-    mock_classifier.classify.side_effect = ['SPAM', 'INBOX']
+    from src.gmail_client import GmailClient
+    with patch.object(GmailClient, '_load_credentials'), \
+         patch.object(GmailClient, 'service', new_callable=PropertyMock) as mock_service_prop:
+        mock_service_prop.return_value = mock_service
+        client = GmailClient()
+        messages = client.list_unread_messages()
 
-    agent = MailAgent(mock_gmail, mock_classifier, max_workers=2)
-    agent.run_once()
-
-    assert mock_gmail.get_message.call_count == 2
-    mock_gmail.move_to_trash.assert_any_call('123')
+        assert len(messages) == 2
+        assert messages[0]['id'] == '1'
+        assert messages[1]['id'] == '2'

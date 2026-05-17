@@ -55,6 +55,7 @@ class EmailClassifier:
         
         Replaces the instance's `self.rules` with the freshly loaded and compiled rules from `self.rules_path`.
         """
+        """Re-load and re-compile rules from the filesystem."""
         logging.info(f"Reloading rules from {self.rules_path}")
         self.rules = self._load_rules()
 
@@ -92,6 +93,10 @@ class EmailClassifier:
             # 2. Check General Patterns
             for pattern in config['patterns']:
                 if pattern.search(sender) or pattern.search(text_to_analyze):
+                if pattern.search(sender):
+                    return category, config['actions']
+
+                if pattern.search(text_to_analyze):
                     return category, config['actions']
 
         return 'INBOX', []

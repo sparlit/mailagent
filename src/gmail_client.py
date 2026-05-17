@@ -169,11 +169,14 @@ class GmailClient:
         Returns:
             response (dict): The Gmail API response returned by the `batchModify` call.
         """
+    def star(self, message_id, user_id='me'):
+        """Star a message by adding the STARRED label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
                 'ids': [message_id],
                 'removeLabelIds': ['INBOX']
+                'addLabelIds': ['STARRED']
             }
         ).execute()
 
@@ -185,11 +188,14 @@ class GmailClient:
         Returns:
             dict: The Gmail API response for the `batchModify` request.
         """
+    def archive(self, message_id, user_id='me'):
+        """Archive a message by removing the INBOX label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
                 'ids': [message_id],
                 'addLabelIds': ['STARRED']
+                'removeLabelIds': ['INBOX']
             }
         ).execute()
 

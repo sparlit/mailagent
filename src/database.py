@@ -53,7 +53,7 @@ class Database:
                 )
                 return cursor.fetchone() is not None
 
-    def mark_as_processed(self, message_id, account_email=None):
+    def mark_as_processed(self, message_id, account_email):
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(

@@ -6,6 +6,7 @@ from .gmail_client import GmailClient
 from .classifier import EmailClassifier
 from .database import Database
 from .dashboard import run_dashboard
+from . import config
 
 class MailAgent:
     def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=False):
@@ -19,11 +20,13 @@ class MailAgent:
             max_workers (int): Maximum number of worker threads for concurrent message processing.
             dry_run (bool): If True, actions are only logged and not actually performed on Gmail accounts.
         """
+    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=None):
         self.gmail_clients = gmail_clients
         self.classifier = classifier
         self.db = db
         self.max_workers = max_workers
         self.dry_run = dry_run
+        self.dry_run = dry_run if dry_run is not None else config.DRY_RUN
 
     def execute_actions(self, client, msg_id, category, actions):
         """
@@ -41,6 +44,7 @@ class MailAgent:
             try:
                 if self.dry_run:
                     logging.info(f"[DRY RUN] Would execute action '{action}' for message {msg_id}")
+                    logging.info(f"[DRY RUN] Would execute action '{action}' for {msg_id}")
                 else:
                     if action == 'trash':
                         client.move_to_trash(msg_id)
@@ -79,6 +83,7 @@ class MailAgent:
         msg_id = msg_meta['id']
 
         if self.db.is_processed(msg_id, gmail_client.email_address):
+        if self.db.is_processed(msg_id, account_email=gmail_client.email_address):
             logging.info(f"Message {msg_id} already processed for {gmail_client.email_address}. Skipping.")
             return msg_id, None
 
@@ -117,9 +122,12 @@ class MailAgent:
                     logging.error(f"Error listing messages for {client.email_address}: {e}")
 
             for future in as_completed(all_tasks):
-                msg_id, category = future.result()
-                if category:
-                    logging.info(f"Finished processing message {msg_id}")
+                try:
+                    msg_id, category = future.result()
+                    if category:
+                        logging.info(f"Finished processing message {msg_id}")
+                except Exception as e:
+                    logging.error(f"Task generated an exception: {e}")
 
     def run_forever(self, interval=60, start_dashboard=False):
         """
@@ -134,6 +142,16 @@ class MailAgent:
         if start_dashboard:
             logging.info("Starting Dashboard thread...")
             dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
+    def run_forever(self, interval=60, start_dashboard=None):
+        """Run the agent in a loop."""
+        should_start_dashboard = start_dashboard if start_dashboard is not None else config.DASHBOARD_ENABLED
+        if should_start_dashboard:
+            logging.info(f"Starting Dashboard thread on port {config.DASHBOARD_PORT}...")
+            dashboard_thread = threading.Thread(
+                target=run_dashboard,
+                kwargs={'port': config.DASHBOARD_PORT},
+                daemon=True
+            )
             dashboard_thread.start()
 
         logging.info(f"Starting MailAgent loop (Dry Run: {self.dry_run})...")

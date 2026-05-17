@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  mailagent:
+    build: .
+    volumes:
+      - ./credentials.json:/app/credentials.json
+      - ./token.json:/app/token.json
+      - ./rules.json:/app/rules.json
+      - ./.env:/app/.env
+      - ./processed_messages.db:/app/processed_messages.db
+      - ./mailagent.log:/app/mailagent.log
+    restart: always

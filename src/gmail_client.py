@@ -1,27 +1,48 @@
 import os
 import os.path
+import time
+import random
+import threading
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
+def retry_with_backoff(max_retries=5):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except HttpError as error:
+                    if error.resp.status in [429, 500, 502, 503, 504]:
+                        wait_time = (2 ** retries) + random.random()
+                        print(f"Retry {retries + 1}/{max_retries} after {wait_time:.2f}s due to error: {error}")
+                        time.sleep(wait_time)
+                        retries += 1
+                    else:
+                        raise
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 class GmailClient:
+    _thread_local = threading.local()
+
     def __init__(self, credentials_path='credentials.json', token_path='token.json'):
         self.credentials_path = credentials_path
         self.token_path = token_path
-        self.service = self._authenticate()
+        self._creds = self._load_credentials()
 
-    def _authenticate(self):
+    def _load_credentials(self):
         creds = None
-        # The file token.json stores the user's access and refresh tokens, and is
-        # created automatically when the authorization flow completes for the first
-        # time.
         if os.path.exists(self.token_path):
             creds = Credentials.from_authorized_user_file(self.token_path, SCOPES)
-        # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
@@ -31,22 +52,30 @@ class GmailClient:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_path, SCOPES)
                 creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
             with open(self.token_path, 'w') as token:
                 token.write(creds.to_json())
+        return creds
 
-        return build('gmail', 'v1', credentials=creds)
+    @property
+    def service(self):
+        """Thread-safe Gmail API service."""
+        if not hasattr(self._thread_local, "service"):
+            self._thread_local.service = build('gmail', 'v1', credentials=self._creds)
+        return self._thread_local.service
 
+    @retry_with_backoff()
     def list_unread_messages(self, user_id='me'):
         """List all unread messages."""
         results = self.service.users().messages().list(userId=user_id, q='is:unread').execute()
         messages = results.get('messages', [])
         return messages
 
+    @retry_with_backoff()
     def get_message(self, message_id, user_id='me'):
         """Get a specific message by ID."""
         return self.service.users().messages().get(userId=user_id, id=message_id).execute()
 
+    @retry_with_backoff()
     def mark_as_read(self, message_id, user_id='me'):
         """Mark a message as read by removing the UNREAD label."""
         return self.service.users().messages().batchModify(
@@ -57,10 +86,12 @@ class GmailClient:
             }
         ).execute()
 
+    @retry_with_backoff()
     def move_to_trash(self, message_id, user_id='me'):
         """Move a message to trash."""
         return self.service.users().messages().trash(userId=user_id, id=message_id).execute()
 
+    @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):
         """Apply specific labels to a message, creating them if they don't exist."""
         existing_labels = self.service.users().labels().list(userId=user_id).execute().get('labels', [])
@@ -73,7 +104,6 @@ class GmailClient:
             elif label_name in ['INBOX', 'SPAM', 'TRASH', 'UNREAD', 'STARRED', 'IMPORTANT', 'SENT', 'DRAFT', 'CATEGORY_PERSONAL', 'CATEGORY_SOCIAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS']:
                 final_label_ids.append(label_name)
             else:
-                # Create custom label
                 try:
                     new_label = self.service.users().labels().create(
                         userId=user_id,

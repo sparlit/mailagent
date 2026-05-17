@@ -2,16 +2,21 @@ import re
 
 class EmailClassifier:
     def __init__(self):
-        # Refined rule-based classification to reduce false positives
-        self.spam_keywords = [
-            'lottery prize', 'winner of our lucky draw', 'crypto giveaway',
-            'congratulations! you won', 'account suspended - verify now'
+        # Compiled regex patterns for better performance and more complex matching
+        self.spam_patterns = [
+            re.compile(r'lottery prize|winner of our lucky draw', re.I),
+            re.compile(r'crypto (giveaway|bonus|airdrop)', re.I),
+            re.compile(r'congratulations! you won', re.I),
+            re.compile(r'account suspended.*verify now', re.I),
+            re.compile(r'urgent.*action required.*(bank|account)', re.I),
+            re.compile(r'unclaimed (money|funds)', re.I)
         ]
-        self.social_keywords = [
-            'facebook', 'twitter', 'linkedin', 'instagram'
+        self.social_patterns = [
+            re.compile(r'facebook|twitter|linkedin|instagram|pinterest|tiktok', re.I)
         ]
-        self.update_keywords = [
-            'newsletter', 'receipt', 'invoice', 'order', 'shipping'
+        self.update_patterns = [
+            re.compile(r'newsletter|receipt|invoice|order|shipping|track.*package', re.I),
+            re.compile(r'statement|bill.*due|payment (received|confirmed)', re.I)
         ]
 
     def classify(self, message):
@@ -19,7 +24,7 @@ class EmailClassifier:
         Classify an email based on its metadata and snippet.
         Returns a suggested label or action.
         """
-        snippet = message.get('snippet', '').lower()
+        snippet = message.get('snippet', '')
         payload = message.get('payload', {})
         headers = payload.get('headers', [])
 
@@ -27,23 +32,26 @@ class EmailClassifier:
         sender = ""
         for header in headers:
             if header['name'].lower() == 'subject':
-                subject = header['value'].lower()
+                subject = header['value']
             if header['name'].lower() == 'from':
-                sender = header['value'].lower()
+                sender = header['value']
 
         text_to_analyze = f"{subject} {snippet}"
 
-        # Check for spam - more specific to avoid false positives
-        if any(keyword in text_to_analyze for keyword in self.spam_keywords):
-            return 'SPAM'
+        # Check for spam
+        for pattern in self.spam_patterns:
+            if pattern.search(text_to_analyze):
+                return 'SPAM'
 
-        # Check for social
-        if any(keyword in sender for keyword in self.social_keywords):
-            return 'SOCIAL'
+        # Check for social (check sender specifically)
+        for pattern in self.social_patterns:
+            if pattern.search(sender):
+                return 'SOCIAL'
 
         # Check for updates
-        if any(keyword in text_to_analyze for keyword in self.update_keywords):
-            return 'UPDATES'
+        for pattern in self.update_patterns:
+            if pattern.search(text_to_analyze):
+                return 'UPDATES'
 
-        # Default to INBOX if no rules match
+        # Default to INBOX
         return 'INBOX'

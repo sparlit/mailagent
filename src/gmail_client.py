@@ -41,6 +41,16 @@ class GmailClient:
         self._creds = self._load_credentials()
         self._labels_cache = None
         self._labels_lock = threading.Lock()
+        self.email_address = self._get_user_email()
+
+    def _get_user_email(self):
+        """Fetch the authenticated user's email address."""
+        try:
+            profile = self.service.users().getProfile(userId='me').execute()
+            return profile.get('emailAddress')
+        except Exception as e:
+            logging.error(f"Error fetching user profile: {e}")
+            return "unknown"
 
     def _load_credentials(self):
         creds = None

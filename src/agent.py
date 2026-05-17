@@ -53,14 +53,14 @@ class MailAgent:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             for client in self.gmail_clients:
-                logging.info("Checking for unread messages in an account...")
+                logging.info(f"Checking for unread messages in account: {client.email_address}")
                 try:
                     messages = client.list_unread_messages()
                     if not messages:
-                        logging.info("No unread messages found for this account.")
+                        logging.info(f"No unread messages found for {client.email_address}")
                         continue
 
-                    logging.info(f"Found {len(messages)} unread messages in an account.")
+                    logging.info(f"Found {len(messages)} unread messages in {client.email_address}")
                     for msg in messages:
                         all_tasks.append(executor.submit(self.process_message, client, msg))
                 except Exception as e:

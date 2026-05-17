@@ -37,9 +37,18 @@ def main():
 
         db = Database()
         classifier = EmailClassifier(rules_path=config.RULES_PATH)
-        agent = MailAgent(gmail_clients, classifier, db, max_workers=config.MAX_WORKERS)
+        agent = MailAgent(
+            gmail_clients,
+            classifier,
+            db,
+            max_workers=config.MAX_WORKERS,
+            dry_run=config.DRY_RUN
+        )
 
-        agent.run_forever(interval=config.CHECK_INTERVAL)
+        agent.run_forever(
+            interval=config.CHECK_INTERVAL,
+            start_dashboard=config.DASHBOARD_ENABLED
+        )
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
         sys.exit(1)

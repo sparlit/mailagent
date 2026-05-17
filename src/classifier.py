@@ -32,6 +32,11 @@ class EmailClassifier:
                 logging.error(f"Error loading rules from {self.rules_path}: {e}")
         return compiled_rules
 
+    def reload_rules(self):
+        """Reload and recompile rules from rules.json."""
+        logging.info(f"Reloading rules from {self.rules_path}")
+        self.rules = self._load_rules()
+
     def classify(self, message):
         """
         Classify an email based on its metadata and snippet.
@@ -55,11 +60,7 @@ class EmailClassifier:
 
             # 2. Check General Patterns
             for pattern in config['patterns']:
-                if category == 'SOCIAL':
-                    if pattern.search(sender):
-                        return category, config['actions']
-
-                if pattern.search(text_to_analyze):
+                if pattern.search(sender) or pattern.search(text_to_analyze):
                     return category, config['actions']
 
         return 'INBOX', []

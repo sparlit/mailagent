@@ -48,7 +48,11 @@ class GmailClient:
         """Fetch the authenticated user's email address."""
         try:
             profile = self.service.users().getProfile(userId='me').execute()
-            return profile.get('emailAddress')
+            email = profile.get('emailAddress')
+            if not email:
+                logging.warning("User profile fetched but emailAddress is missing.")
+                return "unknown"
+            return email
         except Exception as e:
             logging.error(f"Error fetching user profile: {e}")
             return "unknown"
@@ -146,6 +150,28 @@ class GmailClient:
     def move_to_trash(self, message_id, user_id='me'):
         """Move a message to trash."""
         return self.service.users().messages().trash(userId=user_id, id=message_id).execute()
+
+    @retry_with_backoff()
+    def archive(self, message_id, user_id='me'):
+        """Archive a message by removing the INBOX label."""
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'removeLabelIds': ['INBOX']
+            }
+        ).execute()
+
+    @retry_with_backoff()
+    def star(self, message_id, user_id='me'):
+        """Star a message by adding the STARRED label."""
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'addLabelIds': ['STARRED']
+            }
+        ).execute()
 
     @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):

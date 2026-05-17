@@ -46,14 +46,34 @@ HTML_TEMPLATE = '''
 
 @app.route('/')
 def index():
+    """
+    Render the dashboard HTML page with action statistics and account count.
+    
+    Fetches statistics from the global database client, computes the number of unique accounts, and renders the in-module HTML template with `stats` and `accounts_count` provided to the template.
+    
+    Returns:
+        str: The rendered HTML page for the dashboard.
+    """
     stats = db.get_stats()
     accounts_count = len(set(s[0] for s in stats))
     return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=accounts_count)
 
 @app.route('/api/stats')
 def api_stats():
+    """
+    Provide action statistics as JSON by fetching current statistics from the database.
+    
+    Returns:
+        json: The raw `stats` value returned by `db.get_stats()` serialized to JSON (typically a list of statistic rows).
+    """
     stats = db.get_stats()
     return jsonify(stats)
 
 def run_dashboard(port=5000):
+    """
+    Start the Flask dashboard server bound to all network interfaces.
+    
+    Parameters:
+        port (int): TCP port to bind the server to (default: 5000). The server runs with debug mode disabled and the reloader turned off.
+    """
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)

@@ -15,6 +15,14 @@ DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
 DRY_RUN = os.getenv('DRY_RUN', 'False').lower() == 'true'
 
 def get_accounts():
+    """
+    Parse the configured ACCOUNTS_JSON and produce a list of account mappings.
+    
+    If ACCOUNTS_JSON contains valid JSON, returns its parsed value. If parsing fails, returns a fallback list containing a single account mapping with default credential and token file names.
+    
+    Returns:
+        list[dict]: List of account objects; on parse failure, [{"credentials": "credentials.json", "token": "token.json"}].
+    """
     try:
         return json.loads(ACCOUNTS_JSON)
     except json.JSONDecodeError:

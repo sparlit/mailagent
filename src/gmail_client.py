@@ -11,6 +11,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+__all__ = ['GmailClient']
+
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
@@ -163,39 +165,45 @@ class GmailClient:
 
     @retry_with_backoff()
     def archive(self, message_id, user_id='me'):
-        """
-        Archive a message by removing the `INBOX` label.
-        
-        Returns:
-            response (dict): The Gmail API response returned by the `batchModify` call.
-        """
+        """Archive a message by removing the INBOX label."""
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'removeLabelIds': ['INBOX']
+            }
+        ).execute()
+
+    @retry_with_backoff()
     def star(self, message_id, user_id='me'):
         """Star a message by adding the STARRED label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
                 'ids': [message_id],
-                'removeLabelIds': ['INBOX']
                 'addLabelIds': ['STARRED']
             }
         ).execute()
 
     @retry_with_backoff()
-    def star(self, message_id, user_id='me'):
-        """
-        Star a message by adding Gmail's `STARRED` label.
-        
-        Returns:
-            dict: The Gmail API response for the `batchModify` request.
-        """
-    def archive(self, message_id, user_id='me'):
-        """Archive a message by removing the INBOX label."""
+    def unstar(self, message_id, user_id='me'):
+        """Unstar a message by removing the STARRED label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
                 'ids': [message_id],
-                'addLabelIds': ['STARRED']
-                'removeLabelIds': ['INBOX']
+                'removeLabelIds': ['STARRED']
+            }
+        ).execute()
+
+    @retry_with_backoff()
+    def mark_important(self, message_id, user_id='me'):
+        """Mark a message as important by adding the IMPORTANT label."""
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'addLabelIds': ['IMPORTANT']
             }
         ).execute()
 

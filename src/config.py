@@ -4,6 +4,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+__all__ = [
+    'ACCOUNTS_JSON',
+    'CHECK_INTERVAL',
+    'MAX_WORKERS',
+    'RULES_PATH',
+    'DRY_RUN',
+    'DASHBOARD_ENABLED',
+    'DASHBOARD_PORT',
+    'get_accounts'
+]
+
 def get_bool_env(key, default):
     val = os.getenv(key, str(default)).lower()
     return val in ('true', '1', 't', 'y', 'yes')
@@ -17,10 +28,6 @@ RULES_PATH = os.getenv('RULES_PATH', 'rules.json')
 DRY_RUN = get_bool_env('DRY_RUN', False)
 DASHBOARD_ENABLED = get_bool_env('DASHBOARD_ENABLED', True)
 DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
-
-DASHBOARD_ENABLED = os.getenv('DASHBOARD_ENABLED', 'True').lower() == 'true'
-DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
-DRY_RUN = os.getenv('DRY_RUN', 'False').lower() == 'true'
 
 def get_accounts():
     """

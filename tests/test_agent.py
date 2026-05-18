@@ -167,6 +167,30 @@ def test_execute_star_records_stat(db):
     assert (client.email_address, "star", "VIP", 1) in stats
 
 
+def test_execute_unstar_action(db):
+    agent, client, _ = _make_agent(db, dry_run=False)
+    agent.execute_actions(client, "m1", "SOCIAL", ["unstar"])
+    client.unstar.assert_called_once_with("m1")
+
+
+def test_execute_mark_important_action(db):
+    agent, client, _ = _make_agent(db, dry_run=False)
+    agent.execute_actions(client, "m1", "WORK", ["mark_important"])
+    client.mark_important.assert_called_once_with("m1")
+
+
+def test_dry_run_skips_unstar(db):
+    agent, client, _ = _make_agent(db, dry_run=True)
+    agent.execute_actions(client, "m1", "SOCIAL", ["unstar"])
+    client.unstar.assert_not_called()
+
+
+def test_dry_run_skips_mark_important(db):
+    agent, client, _ = _make_agent(db, dry_run=True)
+    agent.execute_actions(client, "m1", "WORK", ["mark_important"])
+    client.mark_important.assert_not_called()
+
+
 # --- process_message: is_processed now requires account_email ---
 
 def test_process_message_passes_email_to_is_processed(db):

@@ -1,6 +1,8 @@
 import sqlite3
 import threading
 
+__all__ = ['Database']
+
 class Database:
     def __init__(self, db_path='processed_messages.db'):
         self.db_path = db_path

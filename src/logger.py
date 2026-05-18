@@ -2,6 +2,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import sys
 
+__all__ = ['setup_logging']
+
 def setup_logging(log_file='mailagent.log'):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)

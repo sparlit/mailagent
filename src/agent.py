@@ -30,7 +30,7 @@ class MailAgent:
         """
         Perform mailbox actions for a message and record corresponding statistics.
         
-        Each action in `actions` is applied to the message identified by `msg_id` using `client`. When `self.dry_run` is true, actions are not performed and are only logged. Supported actions: 'trash', 'label', 'mark_read', 'archive', 'star'. After each attempted action a statistic is recorded in `self.db`. Exceptions raised while performing an individual action are caught and logged; they do not stop processing remaining actions.
+        Each action in `actions` is applied to the message identified by `msg_id` using `client`. When `self.dry_run` is true, actions are not performed and are only logged. Supported actions: 'trash', 'label', 'mark_read', 'archive', 'star', 'unstar', 'mark_important'. After each attempted action a statistic is recorded in `self.db`. Exceptions raised while performing an individual action are caught and logged; they do not stop processing remaining actions.
         
         Parameters:
             client: Gmail client instance used to perform mailbox operations and providing `email_address`.

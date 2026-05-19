@@ -3,6 +3,8 @@ import json
 import os
 import logging
 
+__all__ = ['EmailClassifier']
+
 class EmailClassifier:
     def __init__(self, rules_path='rules.json'):
         self.rules_path = rules_path

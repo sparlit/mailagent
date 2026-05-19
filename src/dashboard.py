@@ -1,5 +1,8 @@
 from flask import Flask, jsonify, render_template_string
 from .database import Database
+from . import config
+
+__all__ = ['run_dashboard']
 
 app = Flask(__name__)
 db = Database()
@@ -21,9 +24,8 @@ HTML_TEMPLATE = '''
 </head>
 <body>
     <h1>MailAgent Autonomous AI Dashboard</h1>
-    <p><strong>{{ accounts_count }}</strong> unique accounts monitored.</p>
     <div class="summary">
-        Monitoring <strong>{{ account_count }}</strong> unique Gmail accounts.
+        Monitoring <strong>{{ accounts_count }}</strong> unique Gmail accounts.
     </div>
     <div class="stats-container">
         <h2>Action Statistics</h2>
@@ -82,6 +84,7 @@ def index():
     """
     stats = db.get_stats()
     unique_accounts = set(stat[0] for stat in stats)
+    return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=len(unique_accounts))
     return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=len(unique_accounts), account_count=len(unique_accounts))
 
 @app.route('/api/stats')

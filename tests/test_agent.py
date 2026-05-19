@@ -169,12 +169,29 @@ def test_execute_star_records_stat(db):
 
 def test_execute_unstar_action(db):
     agent, client, _ = _make_agent(db, dry_run=False)
+    agent.execute_actions(client, "m1", "SOCIAL", ["unstar"])
     agent.execute_actions(client, "m1", "VIP", ["unstar"])
     client.unstar.assert_called_once_with("m1")
 
 
 def test_execute_mark_important_action(db):
     agent, client, _ = _make_agent(db, dry_run=False)
+    agent.execute_actions(client, "m1", "WORK", ["mark_important"])
+    client.mark_important.assert_called_once_with("m1")
+
+
+def test_dry_run_skips_unstar(db):
+    agent, client, _ = _make_agent(db, dry_run=True)
+    agent.execute_actions(client, "m1", "SOCIAL", ["unstar"])
+    client.unstar.assert_not_called()
+
+
+def test_dry_run_skips_mark_important(db):
+    agent, client, _ = _make_agent(db, dry_run=True)
+    agent.execute_actions(client, "m1", "WORK", ["mark_important"])
+    client.mark_important.assert_not_called()
+
+
     agent.execute_actions(client, "m1", "VIP", ["mark_important"])
     client.mark_important.assert_called_once_with("m1")
 

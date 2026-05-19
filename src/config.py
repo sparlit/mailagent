@@ -4,6 +4,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+__all__ = [
+    'ACCOUNTS_JSON',
+    'CHECK_INTERVAL',
+    'MAX_WORKERS',
+    'RULES_PATH',
+    'DRY_RUN',
+    'DASHBOARD_ENABLED',
+    'DASHBOARD_PORT',
+    'get_accounts'
+]
+
 def get_bool_env(key, default):
     val = os.getenv(key, str(default)).lower()
     return val in ('true', '1', 't', 'y', 'yes')

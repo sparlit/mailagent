@@ -8,6 +8,8 @@ from .database import Database
 from .dashboard import run_dashboard
 from . import config
 
+__all__ = ['MailAgent']
+
 class MailAgent:
     def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=None):
         """

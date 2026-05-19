@@ -152,6 +152,32 @@ class GmailClient:
         ).execute()
 
     @retry_with_backoff()
+    def unstar(self, message_id, user_id='me'):
+        """
+        Remove the STARRED label from a message.
+        """
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'removeLabelIds': ['STARRED']
+            }
+        ).execute()
+
+    @retry_with_backoff()
+    def mark_important(self, message_id, user_id='me'):
+        """
+        Add the IMPORTANT label to a message.
+        """
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body={
+                'ids': [message_id],
+                'addLabelIds': ['IMPORTANT']
+            }
+        ).execute()
+
+    @retry_with_backoff()
     def move_to_trash(self, message_id, user_id='me'):
         """
         Moves the specified message to the Trash.
@@ -163,6 +189,12 @@ class GmailClient:
 
     @retry_with_backoff()
     def archive(self, message_id, user_id='me'):
+        """
+        Archive a message by removing the `INBOX` label.
+        
+        Returns:
+            response (dict): The Gmail API response returned by the `batchModify` call.
+        """
         """Archive a message by removing the INBOX label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
@@ -174,6 +206,12 @@ class GmailClient:
 
     @retry_with_backoff()
     def star(self, message_id, user_id='me'):
+        """
+        Star a message by adding Gmail's `STARRED` label.
+        
+        Returns:
+            dict: The Gmail API response for the `batchModify` request.
+        """
         """Star a message by adding the STARRED label."""
         return self.service.users().messages().batchModify(
             userId=user_id,

@@ -43,6 +43,28 @@ HTML_TEMPLATE = '''
             </tr>
             {% endfor %}
         </table>
+
+        <h2>Category Summary</h2>
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Total Processed</th>
+            </tr>
+            {% set categories = {} %}
+            {% for stat in stats %}
+                {% if stat[2] in categories %}
+                    {% if categories.update({stat[2]: categories[stat[2]] + stat[3]}) %}{% endif %}
+                {% else %}
+                    {% if categories.update({stat[2]: stat[3]}) %}{% endif %}
+                {% endif %}
+            {% endfor %}
+            {% for cat, count in categories.items() %}
+            <tr>
+                <td>{{ cat }}</td>
+                <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+        </table>
     </div>
 </body>
 </html>

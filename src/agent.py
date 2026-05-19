@@ -9,7 +9,7 @@ from .dashboard import run_dashboard
 from . import config
 
 class MailAgent:
-    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=False):
+    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=None):
         """
         Create a MailAgent that processes messages from one or more Gmail accounts.
         
@@ -20,19 +20,17 @@ class MailAgent:
             max_workers (int): Maximum number of worker threads for concurrent message processing.
             dry_run (bool): If True, actions are only logged and not actually performed on Gmail accounts.
         """
-    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=None):
         self.gmail_clients = gmail_clients
         self.classifier = classifier
         self.db = db
         self.max_workers = max_workers
-        self.dry_run = dry_run
         self.dry_run = dry_run if dry_run is not None else config.DRY_RUN
 
     def execute_actions(self, client, msg_id, category, actions):
         """
         Perform mailbox actions for a message and record corresponding statistics.
         
-        Each action in `actions` is applied to the message identified by `msg_id` using `client`. When `self.dry_run` is true, actions are not performed and are only logged. Supported actions: 'trash', 'label', 'mark_read', 'archive', 'star'. After each attempted action a statistic is recorded in `self.db`. Exceptions raised while performing an individual action are caught and logged; they do not stop processing remaining actions.
+        Each action in `actions` is applied to the message identified by `msg_id` using `client`. When `self.dry_run` is true, actions are not performed and are only logged. Supported actions: 'trash', 'label', 'mark_read', 'archive', 'star', 'unstar', 'mark_important'. After each attempted action a statistic is recorded in `self.db`. Exceptions raised while performing an individual action are caught and logged; they do not stop processing remaining actions.
         
         Parameters:
             client: Gmail client instance used to perform mailbox operations and providing `email_address`.
@@ -44,7 +42,6 @@ class MailAgent:
             try:
                 if self.dry_run:
                     logging.info(f"[DRY RUN] Would execute action '{action}' for message {msg_id}")
-                    logging.info(f"[DRY RUN] Would execute action '{action}' for {msg_id}")
                 else:
                     if action == 'trash':
                         client.move_to_trash(msg_id)
@@ -61,6 +58,12 @@ class MailAgent:
                     elif action == 'star':
                         client.star(msg_id)
                         logging.info(f"Action 'star' executed for {msg_id}")
+                    elif action == 'unstar':
+                        client.unstar(msg_id)
+                        logging.info(f"Action 'unstar' executed for {msg_id}")
+                    elif action == 'mark_important':
+                        client.mark_important(msg_id)
+                        logging.info(f"Action 'mark_important' executed for {msg_id}")
 
                 # Record statistic
                 self.db.record_stat(client.email_address, action, category)
@@ -82,7 +85,6 @@ class MailAgent:
         """
         msg_id = msg_meta['id']
 
-        if self.db.is_processed(msg_id, gmail_client.email_address):
         if self.db.is_processed(msg_id, account_email=gmail_client.email_address):
             logging.info(f"Message {msg_id} already processed for {gmail_client.email_address}. Skipping.")
             return msg_id, None
@@ -129,7 +131,7 @@ class MailAgent:
                 except Exception as e:
                     logging.error(f"Task generated an exception: {e}")
 
-    def run_forever(self, interval=60, start_dashboard=False):
+    def run_forever(self, interval=60, start_dashboard=None):
         """
         Run the MailAgent loop indefinitely, processing mail periodically.
         
@@ -139,11 +141,6 @@ class MailAgent:
             interval (int): Number of seconds to wait between cycles.
             start_dashboard (bool): If True, start the dashboard in a separate daemon thread before running.
         """
-        if start_dashboard:
-            logging.info("Starting Dashboard thread...")
-            dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
-    def run_forever(self, interval=60, start_dashboard=None):
-        """Run the agent in a loop."""
         should_start_dashboard = start_dashboard if start_dashboard is not None else config.DASHBOARD_ENABLED
         if should_start_dashboard:
             logging.info(f"Starting Dashboard thread on port {config.DASHBOARD_PORT}...")

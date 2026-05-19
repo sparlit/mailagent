@@ -18,10 +18,6 @@ DRY_RUN = get_bool_env('DRY_RUN', False)
 DASHBOARD_ENABLED = get_bool_env('DASHBOARD_ENABLED', True)
 DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
 
-DASHBOARD_ENABLED = os.getenv('DASHBOARD_ENABLED', 'True').lower() == 'true'
-DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
-DRY_RUN = os.getenv('DRY_RUN', 'False').lower() == 'true'
-
 def get_accounts():
     """
     Parse the ACCOUNTS_JSON environment variable into a list of account dictionaries.

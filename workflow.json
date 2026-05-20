@@ -1,5 +1,5 @@
 {
-  "name": "Autonomous Mail Agent - Multi-Team Management",
+  "name": "Autonomous Mail Agent - Multi-Team Management (FOSS Optimized)",
   "nodes": [
     {
       "parameters": {
@@ -39,12 +39,15 @@
     },
     {
       "parameters": {
-        "resource": "assistant",
-        "assistantId": "asst_project_manager",
-        "prompt": "=TASK: {{ $json.project }}\nCORE PRINCIPLE: {{ $json.core_principle }}\n\nStep 1: Analyze project for gaps/blind spots/dead ends.\nStep 2: Assign fixes to Team Leaders.\nStep 3: Ensure Multi-Thread Parallel Processing and no feature removals."
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "bodyParameters": {
+          "model": "llama3",
+          "prompt": "=TASK: {{ $json.project }}\nCORE PRINCIPLE: {{ $json.core_principle }}\n\nStep 1: Analyze project for gaps/blind spots/dead ends.\nStep 2: Assign fixes to Team Leaders.\nStep 3: Ensure Multi-Thread Parallel Processing and no feature removals."
+        }
       },
-      "name": "Project Manager",
-      "type": "n8n-nodes-base.openAi",
+      "name": "FOSS Project Manager",
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [400, 0]
     },
@@ -60,45 +63,57 @@
     },
     {
       "parameters": {
-        "resource": "assistant",
-        "assistantId": "asst_team_leader",
-        "prompt": "=Assign the following task to 3 team members: {{ $json.task_name }}\n\nReport progress back to Project Manager."
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "bodyParameters": {
+          "model": "llama3",
+          "prompt": "=Assign the following task to 3 team members: {{ $json.task_name }}\n\nReport progress back to Project Manager."
+        }
       },
-      "name": "Team Leader",
-      "type": "n8n-nodes-base.openAi",
+      "name": "FOSS Team Leader",
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [800, 0]
     },
     {
       "parameters": {
-        "resource": "assistant",
-        "assistantId": "asst_team_member_1",
-        "prompt": "=Execute Sub-Task 1: {{ $json.subtask_1 }}"
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "bodyParameters": {
+          "model": "llama3",
+          "prompt": "=Execute Sub-Task 1: {{ $json.subtask_1 }}"
+        }
       },
-      "name": "Member 1",
-      "type": "n8n-nodes-base.openAi",
+      "name": "FOSS Member 1",
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [1000, -100]
     },
     {
       "parameters": {
-        "resource": "assistant",
-        "assistantId": "asst_team_member_2",
-        "prompt": "=Execute Sub-Task 2: {{ $json.subtask_2 }}"
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "bodyParameters": {
+          "model": "llama3",
+          "prompt": "=Execute Sub-Task 2: {{ $json.subtask_2 }}"
+        }
       },
-      "name": "Member 2",
-      "type": "n8n-nodes-base.openAi",
+      "name": "FOSS Member 2",
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [1000, 0]
     },
     {
       "parameters": {
-        "resource": "assistant",
-        "assistantId": "asst_team_member_3",
-        "prompt": "=Execute Sub-Task 3: {{ $json.subtask_3 }}"
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "bodyParameters": {
+          "model": "llama3",
+          "prompt": "=Execute Sub-Task 3: {{ $json.subtask_3 }}"
+        }
       },
-      "name": "Member 3",
-      "type": "n8n-nodes-base.openAi",
+      "name": "FOSS Member 3",
+      "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [1000, 100]
     },
@@ -124,18 +139,18 @@
   ],
   "connections": {
     "Schedule Trigger": { "main": [[{ "node": "Initialize Project", "type": "main", "index": 0 }]] },
-    "Initialize Project": { "main": [[{ "node": "Project Manager", "type": "main", "index": 0 }]] },
-    "Project Manager": { "main": [[{ "node": "Divide into Tasks", "type": "main", "index": 0 }]] },
-    "Divide into Tasks": { "main": [[{ "node": "Team Leader", "type": "main", "index": 0 }]] },
-    "Team Leader": { "main": [
-        [{ "node": "Member 1", "type": "main", "index": 0 }],
-        [{ "node": "Member 2", "type": "main", "index": 0 }],
-        [{ "node": "Member 3", "type": "main", "index": 0 }]
+    "Initialize Project": { "main": [[{ "node": "FOSS Project Manager", "type": "main", "index": 0 }]] },
+    "FOSS Project Manager": { "main": [[{ "node": "Divide into Tasks", "type": "main", "index": 0 }]] },
+    "Divide into Tasks": { "main": [[{ "node": "FOSS Team Leader", "type": "main", "index": 0 }]] },
+    "FOSS Team Leader": { "main": [
+        [{ "node": "FOSS Member 1", "type": "main", "index": 0 }],
+        [{ "node": "FOSS Member 2", "type": "main", "index": 0 }],
+        [{ "node": "FOSS Member 3", "type": "main", "index": 0 }]
       ]
     },
-    "Member 1": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
-    "Member 2": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
-    "Member 3": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
+    "FOSS Member 1": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
+    "FOSS Member 2": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
+    "FOSS Member 3": { "main": [[{ "node": "Consolidate Work", "type": "main", "index": 0 }]] },
     "Consolidate Work": { "main": [[{ "node": "Repeat Loop", "type": "main", "index": 0 }]] },
     "Repeat Loop": { "main": [[{ "node": "Initialize Project", "type": "main", "index": 0 }]] }
   }

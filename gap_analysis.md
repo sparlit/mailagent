@@ -1,29 +1,21 @@
-# Gap Analysis Report - Autonomous Mail Agent
+# Gap Analysis Report - Autonomous Mail Agent (Resolved)
 
-## 1. Redundancies and Code Duplication
-- **main.py**: The `MailAgent` is instantiated and `run_forever` is called twice (lines 47-52 and lines 54-57).
-- **src/agent.py**:
-    - `__init__` method is defined twice (lines 14-24 and lines 25-31).
-    - `run_forever` method is defined twice (lines 114-122 and lines 123-138).
-    - `process_message` contains redundant check for `is_processed` (lines 75-76).
-- **src/classifier.py**:
-    - `reload_rules` has redundant docstrings.
-    - `classify` method has redundant pattern matching logic (lines 104-110).
-- **src/config.py**: `DASHBOARD_ENABLED`, `DASHBOARD_PORT`, and `DRY_RUN` are assigned twice.
-- **src/dashboard.py**: `index` function has two consecutive `return` statements.
+## 1. Redundancies and Code Duplication - FIXED
+- **main.py**: Double instantiation of `MailAgent` resolved.
+- **src/agent.py**: Duplicate `__init__` and `run_forever` methods removed. Redundant processed check in `process_message` cleaned up.
+- **src/classifier.py**: Redundant docstrings and pattern matching logic consolidated.
+- **src/config.py**: Duplicate environment variable assignments removed.
+- **src/dashboard.py**: Consecutive return statements in `index` function removed.
+- **src/gmail_client.py**: Duplicate `unstar` and `mark_important` methods removed. Redundant docstrings in `archive` and `star` cleaned up.
 
-## 2. Logical and Syntax Errors
-- **src/gmail_client.py**:
-    - `archive` and `star` methods are duplicated and incorrectly implemented.
-    - Syntax error: Missing comma in dictionary at line 148.
-    - Method overlap: `star` and `archive` methods are repeated and partially overwrite each other's intended functionality.
+## 2. Logical and Syntax Errors - FIXED
+- **src/gmail_client.py**: Incorrectly implemented `archive` and `star` methods fixed. Missing comma syntax error resolved.
 
-## 3. Gaps and Blind Spots
-- **scikit-learn**: Included in `requirements.txt` but not utilized in the codebase.
-- **Action Support**: The agent claims to be sophisticated but supports a limited set of actions.
-- **Error Handling**: While retry logic exists, some error paths in `process_message` might benefit from more granular reporting.
+## 3. Gaps and Blind Spots - ADDRESSED
+- **scikit-learn**: Now utilized in `EmailClassifier` as a Naive Bayes fallback for improved "intelligent" classification when regex rules don't match.
+- **Action Support**: Added `unstar`, `mark_important`, and `forward:<email>` actions to provide more sophisticated automation workflows.
+- **Error Handling**: Improved reporting and robustness in `process_message` and action execution.
 
-## 4. Loose Ends
-- `workflow.json`: Contains a n8n workflow that refers to OpenAI assistants which are not part of the FOSS codebase.
-- `AGENTS.md` mentions: "The application supports graceful shutdowns by handling SIGINT and SIGTERM signals in 'main.py'." - verified.
-- `AGENTS.md` mentions: "Classification rules ... are externalized to 'rules.json', supporting regex patterns for sender, subject, and snippets, along with specific header rules." - verified.
+## 4. Loose Ends - CLEANED UP
+- `workflow.json`: Replaced OpenAI-specific nodes with FOSS-compatible HTTP request nodes (supporting local LLMs like Ollama), strictly adhering to the 100% FOSS principle.
+- **Tests**: Fixed failing tests in `tests/test_agent.py` and added `tests/test_new_features.py` to ensure high coverage of all new functionality.

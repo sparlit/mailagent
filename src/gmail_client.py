@@ -5,6 +5,8 @@ import random
 import threading
 import logging
 import json
+import base64
+from email.message import EmailMessage
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -14,7 +16,7 @@ from googleapiclient.errors import HttpError
 __all__ = ['GmailClient']
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send']
 
 def retry_with_backoff(max_retries=5):
     def decorator(func):
@@ -154,32 +156,6 @@ class GmailClient:
         ).execute()
 
     @retry_with_backoff()
-    def unstar(self, message_id, user_id='me'):
-        """
-        Remove the STARRED label from a message.
-        """
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'removeLabelIds': ['STARRED']
-            }
-        ).execute()
-
-    @retry_with_backoff()
-    def mark_important(self, message_id, user_id='me'):
-        """
-        Add the IMPORTANT label to a message.
-        """
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'addLabelIds': ['IMPORTANT']
-            }
-        ).execute()
-
-    @retry_with_backoff()
     def move_to_trash(self, message_id, user_id='me'):
         """
         Moves the specified message to the Trash.
@@ -197,7 +173,6 @@ class GmailClient:
         Returns:
             response (dict): The Gmail API response returned by the `batchModify` call.
         """
-        """Archive a message by removing the INBOX label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
@@ -214,7 +189,6 @@ class GmailClient:
         Returns:
             dict: The Gmail API response for the `batchModify` request.
         """
-        """Star a message by adding the STARRED label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
@@ -225,7 +199,12 @@ class GmailClient:
 
     @retry_with_backoff()
     def unstar(self, message_id, user_id='me'):
-        """Unstar a message by removing the STARRED label."""
+        """
+        Remove the STARRED label from a message.
+
+        Returns:
+            dict: The Gmail API response.
+        """
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
@@ -236,7 +215,12 @@ class GmailClient:
 
     @retry_with_backoff()
     def mark_important(self, message_id, user_id='me'):
-        """Mark a message as important by adding the IMPORTANT label."""
+        """
+        Add the IMPORTANT label to a message.
+
+        Returns:
+            dict: The Gmail API response.
+        """
         return self.service.users().messages().batchModify(
             userId=user_id,
             body={
@@ -244,6 +228,37 @@ class GmailClient:
                 'addLabelIds': ['IMPORTANT']
             }
         ).execute()
+
+    @retry_with_backoff()
+    def forward_message(self, message_id, to, user_id='me'):
+        """
+        Forward a message's snippet to another recipient.
+
+        Parameters:
+            message_id (str): ID of the message to forward.
+            to (str): Recipient email address.
+            user_id (str): User identifier.
+
+        Returns:
+            dict: The Gmail API response for the sent message.
+        """
+        original_msg = self.get_message(message_id, user_id=user_id)
+        snippet = original_msg.get('snippet', '')
+        subject = 'Fwd: (no subject)'
+
+        for header in original_msg.get('payload', {}).get('headers', []):
+            if header['name'].lower() == 'subject':
+                subject = 'Fwd: ' + header['value']
+                break
+
+        message = EmailMessage()
+        message.set_content(f"Forwarded message snippet:\n\n{snippet}\n\n--- Sent by MailAgent ---")
+        message['To'] = to
+        message['From'] = self.email_address
+        message['Subject'] = subject
+
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        return self.service.users().messages().send(userId=user_id, body={'raw': encoded_message}).execute()
 
     @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):

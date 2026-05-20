@@ -22,6 +22,7 @@ Define what happens to each category in `rules.json`. The agent supports:
 - `mark_read`: Mark the email as read to keep your unread count clean.
 - `unstar`: Remove the star from important-looking but non-essential emails.
 - `mark_important`: Explicitly tag emails with Gmail's "IMPORTANT" marker.
+- `forward:<email>`: Forward the message snippet to another address.
 
 ### 5. Hierarchical Team Orchestration
 Includes a sophisticated simulation of a multi-team management structure (CEO, Project Manager, Team Leaders, Agents) to manage project tasks continuously in a 9-step improvement loop.

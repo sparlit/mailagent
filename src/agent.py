@@ -66,6 +66,10 @@ class MailAgent:
                     elif action == 'mark_important':
                         client.mark_important(msg_id)
                         logging.info(f"Action 'mark_important' executed for {msg_id}")
+                    elif action.startswith('forward:'):
+                        to_email = action.split(':', 1)[1]
+                        client.forward_message(msg_id, to_email)
+                        logging.info(f"Action 'forward' to {to_email} executed for {msg_id}")
 
                 # Record statistic
                 self.db.record_stat(client.email_address, action, category)

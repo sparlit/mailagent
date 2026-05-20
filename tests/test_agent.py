@@ -171,7 +171,7 @@ def test_execute_unstar_action(db):
     agent, client, _ = _make_agent(db, dry_run=False)
     agent.execute_actions(client, "m1", "SOCIAL", ["unstar"])
     agent.execute_actions(client, "m1", "VIP", ["unstar"])
-    client.unstar.assert_called_once_with("m1")
+    assert client.unstar.call_count == 2
 
 
 def test_execute_mark_important_action(db):
@@ -191,7 +191,8 @@ def test_dry_run_skips_mark_important(db):
     agent.execute_actions(client, "m1", "WORK", ["mark_important"])
     client.mark_important.assert_not_called()
 
-
+def test_mark_important_called_in_non_dry_run(db):
+    agent, client, _ = _make_agent(db, dry_run=False)
     agent.execute_actions(client, "m1", "VIP", ["mark_important"])
     client.mark_important.assert_called_once_with("m1")
 

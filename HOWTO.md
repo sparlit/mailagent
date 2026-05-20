@@ -3,7 +3,7 @@
 This guide explains how to use the newly implemented features and the multi-team orchestration script.
 
 ## 1. New Classification Actions
-You can now use `unstar` and `mark_important` as actions in your `rules.json`.
+You can now use `unstar`, `mark_important`, and `forward` as actions in your `rules.json`.
 
 ### Example `rules.json` update:
 ```json
@@ -15,6 +15,10 @@ You can now use `unstar` and `mark_important` as actions in your `rules.json`.
   "READ_LATER": {
     "patterns": ["weekly digest"],
     "actions": ["label", "unstar"]
+  },
+  "FORWARD_TO_ASSISTANT": {
+    "patterns": ["invoice", "billing"],
+    "actions": ["forward:assistant@example.com", "label"]
   }
 }
 ```

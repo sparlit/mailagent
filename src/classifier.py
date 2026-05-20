@@ -2,6 +2,9 @@ import re
 import json
 import os
 import logging
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import Pipeline
 
 __all__ = ['EmailClassifier']
 
@@ -9,6 +12,7 @@ class EmailClassifier:
     def __init__(self, rules_path='rules.json'):
         self.rules_path = rules_path
         self.rules = self._load_rules()
+        self.ml_model = self._train_fallback_model()
 
     def _load_rules(self):
         """
@@ -51,6 +55,46 @@ class EmailClassifier:
                 logging.error(f"Error loading rules from {self.rules_path}: {e}")
         return compiled_rules
 
+    def _train_fallback_model(self):
+        """
+        Train a simple Naive Bayes model based on the patterns in rules.json.
+        This serves as a fallback when exact regex matching fails.
+        """
+        training_data = []
+        labels = []
+
+        if not os.path.exists(self.rules_path):
+            return None
+
+        try:
+            with open(self.rules_path, 'r') as f:
+                raw_rules = json.load(f)
+                for category, config in raw_rules.items():
+                    for pattern in config.get('patterns', []):
+                        # We use the raw pattern string (simplified) for training
+                        clean_pattern = pattern.replace('(', '').replace(')', '').replace('|', ' ').replace('.*', ' ')
+                        training_data.append(clean_pattern)
+                        labels.append(category)
+        except Exception as e:
+            logging.error(f"Error reading rules for ML training: {e}")
+            return None
+
+        if not training_data or len(set(labels)) < 2:
+            return None
+
+        pipeline = Pipeline([
+            ('vectorizer', CountVectorizer()),
+            ('clf', MultinomialNB())
+        ])
+
+        try:
+            pipeline.fit(training_data, labels)
+            logging.info("Fallback ML model trained successfully.")
+            return pipeline
+        except Exception as e:
+            logging.error(f"Failed to train fallback ML model: {e}")
+            return None
+
     def reload_rules(self):
         """
         Reloads and recompiles classification rules from the configured rules file into the instance.
@@ -59,6 +103,7 @@ class EmailClassifier:
         """
         logging.info(f"Reloading rules from {self.rules_path}")
         self.rules = self._load_rules()
+        self.ml_model = self._train_fallback_model()
 
     def classify(self, message):
         """
@@ -95,5 +140,18 @@ class EmailClassifier:
             for pattern in config['patterns']:
                 if pattern.search(sender) or pattern.search(text_to_analyze):
                     return category, config['actions']
+
+        # 3. ML Fallback
+        if self.ml_model:
+            try:
+                # Get probabilities
+                probs = self.ml_model.predict_proba([text_to_analyze])[0]
+                max_prob = max(probs)
+                if max_prob > 0.5:  # Confidence threshold
+                    category = self.ml_model.classes_[probs.argmax()]
+                    logging.info(f"ML Fallback: Classified message as {category} with confidence {max_prob:.2f}")
+                    return category, self.rules[category]['actions']
+            except Exception as e:
+                logging.error(f"ML Fallback failed: {e}")
 
         return 'INBOX', []

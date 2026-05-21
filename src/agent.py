@@ -1,6 +1,8 @@
 import time
 import logging
 import threading
+import json
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .gmail_client import GmailClient
 from .classifier import EmailClassifier
@@ -10,8 +12,10 @@ from . import config
 
 __all__ = ['MailAgent']
 
+from typing import List, Optional, Iterable, Tuple, Dict, Any
+
 class MailAgent:
-    def __init__(self, gmail_clients: list[GmailClient], classifier: EmailClassifier, db: Database, max_workers=10, dry_run=None):
+    def __init__(self, gmail_clients: List[GmailClient], classifier: EmailClassifier, db: Database, max_workers: int = 10, dry_run: Optional[bool] = None) -> None:
         """
         Create a MailAgent that processes messages from one or more Gmail accounts.
         
@@ -27,8 +31,10 @@ class MailAgent:
         self.db = db
         self.max_workers = max_workers
         self.dry_run = dry_run if dry_run is not None else config.DRY_RUN
+        self._templates_cache = None
+        self._templates_last_loaded = 0
 
-    def execute_actions(self, client, msg_id, category, actions):
+    def execute_actions(self, client: GmailClient, msg_id: str, category: str, actions: Iterable[str], message_context: Optional[Dict[str, Any]] = None) -> None:
         """
         Perform mailbox actions for a message and record corresponding statistics.
         
@@ -70,13 +76,56 @@ class MailAgent:
                         to_email = action.split(':', 1)[1]
                         client.forward_message(msg_id, to_email)
                         logging.info(f"Action 'forward' to {to_email} executed for {msg_id}")
+                    elif action.startswith('reply:'):
+                        template_id = action.split(':', 1)[1]
+                        self._handle_reply_action(client, msg_id, template_id, message_context)
 
                 # Record statistic
                 self.db.record_stat(client.email_address, action, category)
             except Exception as e:
                 logging.error(f"Failed to execute action {action} on {msg_id}: {e}")
 
-    def process_message(self, gmail_client, msg_meta):
+    def _get_templates(self) -> Dict[str, Any]:
+        """Load templates with simple caching."""
+        templates_path = 'templates/replies.json'
+        now = time.time()
+        # Cache for 60 seconds
+        if self._templates_cache is None or (now - self._templates_last_loaded > 60):
+            if os.path.exists(templates_path):
+                try:
+                    with open(templates_path, 'r') as f:
+                        self._templates_cache = json.load(f)
+                        self._templates_last_loaded = now
+                except Exception as e:
+                    logging.error(f"Error loading templates: {e}")
+                    return {}
+            else:
+                return {}
+        return self._templates_cache or {}
+
+    def _handle_reply_action(self, client: GmailClient, msg_id: str, template_id: str, message_context: Optional[Dict[str, Any]] = None) -> None:
+        """Helper to load template and send reply."""
+        try:
+            templates = self._get_templates()
+            template = templates.get(template_id)
+            if not template:
+                logging.error(f"Template '{template_id}' not found.")
+                return
+
+            # Get original message for context (subject)
+            msg = message_context or client.get_message(msg_id)
+            headers = {h['name'].lower(): h['value'] for h in msg.get('payload', {}).get('headers', [])}
+            orig_subject = headers.get('subject', '(no subject)')
+
+            reply_subject = template['subject'].format(subject=orig_subject)
+            reply_body = template['body']
+
+            client.send_reply(msg_id, reply_subject, reply_body)
+            logging.info(f"Action 'reply' with template '{template_id}' executed for {msg_id}")
+        except Exception as e:
+            logging.error(f"Error handling reply action for {msg_id}: {e}")
+
+    def process_message(self, gmail_client: GmailClient, msg_meta: Dict[str, Any]) -> Tuple[str, Optional[str]]:
         """
         Process a single Gmail message: classify it, execute any resulting actions, and mark it as processed.
         
@@ -97,12 +146,16 @@ class MailAgent:
 
         try:
             message = gmail_client.get_message(msg_id)
+
+            # Extract body text for more accurate classification
+            message['body_text'] = gmail_client._get_body_text(message.get('payload', {}))
+
             category, actions = self.classifier.classify(message)
 
             logging.info(f"Message {msg_id} in {gmail_client.email_address} classified as: {category} with actions: {actions}")
 
             if actions:
-                self.execute_actions(gmail_client, msg_id, category, actions)
+                self.execute_actions(gmail_client, msg_id, category, actions, message_context=message)
 
             self.db.mark_as_processed(msg_id, account_email=gmail_client.email_address)
             return msg_id, category
@@ -110,7 +163,7 @@ class MailAgent:
             logging.error(f"Error processing message {msg_id}: {e}")
             return msg_id, None
 
-    def run_once(self):
+    def run_once(self) -> None:
         """Perform a single pass across all configured Gmail accounts."""
         all_tasks = []
 
@@ -137,7 +190,7 @@ class MailAgent:
                 except Exception as e:
                     logging.error(f"Task generated an exception: {e}")
 
-    def run_forever(self, interval=60, start_dashboard=None):
+    def run_forever(self, interval: int = 60, start_dashboard: Optional[bool] = None) -> None:
         """
         Run the MailAgent loop indefinitely, processing mail periodically.
         

@@ -13,6 +13,7 @@ HTML_TEMPLATE = '''
 <head>
     <title>MailAgent Dashboard</title>
     <meta http-equiv="refresh" content="30">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; margin: 40px; }
         table { border-collapse: collapse; width: 100%; }
@@ -25,7 +26,16 @@ HTML_TEMPLATE = '''
 <body>
     <h1>MailAgent Autonomous AI Dashboard</h1>
     <div class="summary">
-        Monitoring <strong>{{ accounts_count }}</strong> unique Gmail accounts.
+        Monitoring <strong>{{ accounts_count }}</strong> unique Gmail accounts. | Status: <span style="color: green;">Healthy</span>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+        <div style="flex: 1; min-width: 300px;">
+            <canvas id="actionChart"></canvas>
+        </div>
+        <div style="flex: 1; min-width: 300px;">
+            <canvas id="categoryChart"></canvas>
+        </div>
     </div>
     <div class="stats-container">
         <h2>Action Statistics</h2>
@@ -68,6 +78,58 @@ HTML_TEMPLATE = '''
             {% endfor %}
         </table>
     </div>
+    <script>
+        const stats = {{ stats | tojson }};
+
+        // Process stats for charts
+        const actions = {};
+        const categories = {};
+
+        stats.forEach(stat => {
+            const action = stat[1];
+            const category = stat[2];
+            const count = stat[3];
+
+            actions[action] = (actions[action] || 0) + count;
+            categories[category] = (categories[category] || 0) + count;
+        });
+
+        const actionCtx = document.getElementById('actionChart').getContext('2d');
+        new Chart(actionCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(actions),
+                datasets: [{
+                    label: 'Actions Performed',
+                    data: Object.values(actions),
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+        });
+
+        const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+        new Chart(categoryCtx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(categories),
+                datasets: [{
+                    label: 'Categories Distribution',
+                    data: Object.values(categories),
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(153, 102, 255, 0.5)',
+                        'rgba(255, 159, 64, 0.5)'
+                    ],
+                    borderWidth: 1
+                }]
+            }
+        });
+    </script>
 </body>
 </html>
 '''
@@ -96,6 +158,19 @@ def api_stats():
     """
     stats = db.get_stats()
     return jsonify(stats)
+
+@app.route('/health')
+def health():
+    """
+    Health check endpoint.
+
+    Returns:
+        JSON: status and basic stats.
+    """
+    return jsonify({
+        "status": "healthy",
+        "monitoring_accounts": len(set(stat[0] for stat in db.get_stats()))
+    })
 
 def run_dashboard(port=5000):
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)

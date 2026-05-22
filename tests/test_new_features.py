@@ -63,3 +63,48 @@ def test_gmail_client_forward_message_api_call():
 
             mock_service.users.assert_called()
             mock_service.users().messages.assert_called()
+
+def test_body_extraction():
+    client = GmailClient.__new__(GmailClient)
+    payload = {
+        'mimeType': 'multipart/mixed',
+        'parts': [
+            {
+                'mimeType': 'text/plain',
+                'body': {'data': 'SGVsbG8gd29ybGQ='} # "Hello world" base64
+            },
+            {
+                'mimeType': 'multipart/alternative',
+                'parts': [
+                    {
+                        'mimeType': 'text/plain',
+                        'body': {'data': 'U2Vjb25kIHBhcnQ='} # "Second part" base64
+                    }
+                ]
+            }
+        ]
+    }
+    body = client._get_body_text(payload)
+    assert "Hello world" in body
+    assert "Second part" in body
+
+def test_reply_action_execution():
+    client = MagicMock(spec=GmailClient)
+    client.email_address = "agent@example.com"
+    db = MagicMock()
+    classifier = MagicMock()
+
+    agent = MailAgent([client], classifier, db, dry_run=False)
+
+    # Mock templates
+    with patch("builtins.open", MagicMock(side_effect=[
+        MagicMock(__enter__=lambda self: self, __exit__=lambda *args: None, read=lambda: '{"test_tpl": {"subject": "Re: {subject}", "body": "Hello!"}}')
+    ])), patch("os.path.exists", return_value=True):
+
+        client.get_message.return_value = {
+            'payload': {'headers': [{'name': 'Subject', 'value': 'Original Subject'}]}
+        }
+
+        agent.execute_actions(client, "msg123", "WORK", ["reply:test_tpl"])
+
+        client.send_reply.assert_called_once_with("msg123", "Re: Original Subject", "Hello!")

@@ -144,16 +144,72 @@ class GmailClient:
         """Get a specific message by ID."""
         return self.service.users().messages().get(userId=user_id, id=message_id).execute()
 
+    def _get_body_text(self, payload):
+        """
+        Recursively extract plain text from a message payload.
+
+        Parameters:
+            payload (dict): The message payload from Gmail API.
+
+        Returns:
+            str: Extracted plain text body.
+        """
+        body_text = ""
+        parts = payload.get('parts', [])
+
+        # If there are no parts, check the body data directly
+        if not parts:
+            data = payload.get('body', {}).get('data')
+            if data:
+                try:
+                    decoded_data = base64.urlsafe_b64decode(data).decode('utf-8')
+                    if payload.get('mimeType') == 'text/plain':
+                        body_text += decoded_data
+                except Exception as e:
+                    logging.error(f"Error decoding body data: {e}")
+        else:
+            for part in parts:
+                if part.get('mimeType') == 'text/plain':
+                    data = part.get('body', {}).get('data')
+                    if data:
+                        try:
+                            body_text += base64.urlsafe_b64decode(data).decode('utf-8')
+                        except Exception as e:
+                            logging.error(f"Error decoding part data: {e}")
+                elif part.get('mimeType') == 'multipart/alternative' or part.get('parts'):
+                    body_text += self._get_body_text(part)
+
+        return body_text
+
+    @retry_with_backoff()
+    def _modify_message_labels(self, message_id, add_label_ids=None, remove_label_ids=None, user_id='me'):
+        """
+        Internal helper to modify labels on a message using batchModify.
+
+        Parameters:
+            message_id (str): The ID of the message to modify.
+            add_label_ids (list, optional): List of label IDs to add.
+            remove_label_ids (list, optional): List of label IDs to remove.
+            user_id (str): User identifier. Defaults to 'me'.
+
+        Returns:
+            dict: The Gmail API response.
+        """
+        body = {'ids': [message_id]}
+        if add_label_ids:
+            body['addLabelIds'] = add_label_ids
+        if remove_label_ids:
+            body['removeLabelIds'] = remove_label_ids
+
+        return self.service.users().messages().batchModify(
+            userId=user_id,
+            body=body
+        ).execute()
+
     @retry_with_backoff()
     def mark_as_read(self, message_id, user_id='me'):
         """Mark a message as read by removing the UNREAD label."""
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'removeLabelIds': ['UNREAD']
-            }
-        ).execute()
+        return self._modify_message_labels(message_id, remove_label_ids=['UNREAD'], user_id=user_id)
 
     @retry_with_backoff()
     def move_to_trash(self, message_id, user_id='me'):
@@ -173,13 +229,7 @@ class GmailClient:
         Returns:
             response (dict): The Gmail API response returned by the `batchModify` call.
         """
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'removeLabelIds': ['INBOX']
-            }
-        ).execute()
+        return self._modify_message_labels(message_id, remove_label_ids=['INBOX'], user_id=user_id)
 
     @retry_with_backoff()
     def star(self, message_id, user_id='me'):
@@ -189,13 +239,7 @@ class GmailClient:
         Returns:
             dict: The Gmail API response for the `batchModify` request.
         """
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'addLabelIds': ['STARRED']
-            }
-        ).execute()
+        return self._modify_message_labels(message_id, add_label_ids=['STARRED'], user_id=user_id)
 
     @retry_with_backoff()
     def unstar(self, message_id, user_id='me'):
@@ -205,13 +249,7 @@ class GmailClient:
         Returns:
             dict: The Gmail API response.
         """
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'removeLabelIds': ['STARRED']
-            }
-        ).execute()
+        return self._modify_message_labels(message_id, remove_label_ids=['STARRED'], user_id=user_id)
 
     @retry_with_backoff()
     def mark_important(self, message_id, user_id='me'):
@@ -221,13 +259,7 @@ class GmailClient:
         Returns:
             dict: The Gmail API response.
         """
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'addLabelIds': ['IMPORTANT']
-            }
-        ).execute()
+        return self._modify_message_labels(message_id, add_label_ids=['IMPORTANT'], user_id=user_id)
 
     @retry_with_backoff()
     def forward_message(self, message_id, to, user_id='me'):
@@ -259,6 +291,61 @@ class GmailClient:
 
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         return self.service.users().messages().send(userId=user_id, body={'raw': encoded_message}).execute()
+
+    @retry_with_backoff()
+    def reply_to_message(self, message_id, body_text, user_id='me'):
+        """
+        Send a reply to a message.
+
+        Parameters:
+            message_id (str): ID of the message to reply to.
+            body_text (str): The text content of the reply.
+            user_id (str): User identifier.
+
+        Returns:
+            dict: The Gmail API response for the sent message.
+        """
+        original_msg = self.get_message(message_id, user_id=user_id)
+        headers = original_msg.get('payload', {}).get('headers', [])
+
+        subject = "Re: (no subject)"
+        to_email = ""
+        message_id_header = ""
+        references_header = ""
+
+        for header in headers:
+            name = header['name'].lower()
+            if name == 'subject':
+                subject = header['value']
+                if not subject.lower().startswith('re:'):
+                    subject = "Re: " + subject
+            elif name == 'from':
+                to_email = header['value']
+            elif name == 'message-id':
+                message_id_header = header['value']
+            elif name == 'references':
+                references_header = header['value']
+
+        reply = EmailMessage()
+        reply.set_content(body_text)
+        reply['To'] = to_email
+        reply['From'] = self.email_address
+        reply['Subject'] = subject
+        reply['In-Reply-To'] = message_id_header
+
+        references = (references_header + " " + message_id_header).strip()
+        reply['References'] = references
+
+        thread_id = original_msg.get('threadId')
+        encoded_message = base64.urlsafe_b64encode(reply.as_bytes()).decode()
+
+        return self.service.users().messages().send(
+            userId=user_id,
+            body={
+                'raw': encoded_message,
+                'threadId': thread_id
+            }
+        ).execute()
 
     @retry_with_backoff()
     def apply_labels(self, message_id, label_ids, user_id='me'):
@@ -297,10 +384,4 @@ class GmailClient:
         if not final_label_ids:
             return
 
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body={
-                'ids': [message_id],
-                'addLabelIds': final_label_ids
-            }
-        ).execute()
+        return self._modify_message_labels(message_id, add_label_ids=final_label_ids, user_id=user_id)

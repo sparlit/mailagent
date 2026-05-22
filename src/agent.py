@@ -1,3 +1,5 @@
+import os
+import json
 import time
 import logging
 import threading
@@ -27,6 +29,18 @@ class MailAgent:
         self.db = db
         self.max_workers = max_workers
         self.dry_run = dry_run if dry_run is not None else config.DRY_RUN
+        self.templates = self._load_templates()
+
+    def _load_templates(self):
+        """Load reply templates from templates/replies.json."""
+        templates_path = os.path.join('templates', 'replies.json')
+        if os.path.exists(templates_path):
+            try:
+                with open(templates_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error(f"Error loading templates: {e}")
+        return {}
 
     def execute_actions(self, client, msg_id, category, actions):
         """
@@ -70,6 +84,14 @@ class MailAgent:
                         to_email = action.split(':', 1)[1]
                         client.forward_message(msg_id, to_email)
                         logging.info(f"Action 'forward' to {to_email} executed for {msg_id}")
+                    elif action.startswith('reply:'):
+                        template_id = action.split(':', 1)[1]
+                        reply_text = self.templates.get(template_id)
+                        if reply_text:
+                            client.reply_to_message(msg_id, reply_text)
+                            logging.info(f"Action 'reply' with template {template_id} executed for {msg_id}")
+                        else:
+                            logging.warning(f"Template {template_id} not found for reply action.")
 
                 # Record statistic
                 self.db.record_stat(client.email_address, action, category)
@@ -97,7 +119,8 @@ class MailAgent:
 
         try:
             message = gmail_client.get_message(msg_id)
-            category, actions = self.classifier.classify(message)
+            body_text = gmail_client._get_body_text(message.get('payload', {}))
+            category, actions = self.classifier.classify(message, body_text=body_text)
 
             logging.info(f"Message {msg_id} in {gmail_client.email_address} classified as: {category} with actions: {actions}")
 
@@ -141,7 +164,7 @@ class MailAgent:
         """
         Run the MailAgent loop indefinitely, processing mail periodically.
         
-        Each cycle reloads classifier rules, performs one sweep of all configured accounts, and then sleeps for the given interval. Exceptions raised during a cycle are logged and do not stop the loop. If start_dashboard is True, a dashboard is started in a separate daemon thread before the loop begins.
+        Each cycle reloads classifier rules, reloads reply templates, performs one sweep of all configured accounts, and then sleeps for the given interval. Exceptions raised during a cycle are logged and do not stop the loop. If start_dashboard is True, a dashboard is started in a separate daemon thread before the loop begins.
         
         Parameters:
             interval (int): Number of seconds to wait between cycles.
@@ -161,6 +184,7 @@ class MailAgent:
         while True:
             try:
                 self.classifier.reload_rules()
+                self.templates = self._load_templates()
                 self.run_once()
             except Exception as e:
                 logging.error(f"Error in MailAgent loop: {e}")

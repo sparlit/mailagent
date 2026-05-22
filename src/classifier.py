@@ -105,16 +105,17 @@ class EmailClassifier:
         self.rules = self._load_rules()
         self.ml_model = self._train_fallback_model()
 
-    def classify(self, message):
+    def classify(self, message, body_text=None):
         """
         Determine the classification category and associated actions for an email message using the classifier's compiled rules.
         
-        Header-based rules are evaluated first (highest priority). If no header rule matches for a category, general regex patterns are tested against the sender and the combined subject+snippet text. Matching stops at the first category that matches.
+        Header-based rules are evaluated first (highest priority). If no header rule matches for a category, general regex patterns are tested against the sender and the combined subject+snippet+body text. Matching stops at the first category that matches.
         
         Parameters:
             message (dict): Email data expected to contain optional keys:
                 - 'snippet' (str): short message preview.
                 - 'payload' (dict): may contain 'headers' (list of dicts with 'name' and 'value').
+            body_text (str, optional): Full body text of the email.
         
         Returns:
             tuple: `(category, actions)` where `category` is the matched category name (str) and `actions` is the list of actions for that category. Returns `('INBOX', [])` if no rules match.
@@ -128,6 +129,8 @@ class EmailClassifier:
         sender = header_dict.get('from', '')
 
         text_to_analyze = f"{subject} {snippet}"
+        if body_text:
+            text_to_analyze += f" {body_text}"
 
         for category, config in self.rules.items():
             # 1. Check Header Rules (High Priority)

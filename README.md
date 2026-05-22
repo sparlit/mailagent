@@ -41,10 +41,16 @@ Includes a sophisticated simulation of a multi-team management structure (CEO, P
 ## Setup
 
 1. **FOSS Dependencies:** `pip install -r requirements.txt`
-2. **Credentials:** Place your Google Cloud `credentials.json` in the root.
-3. **Configuration:**
+2. **Credentials:**
+   - Option A: Place your Google Cloud `credentials.json` in the root.
+   - Option B (Headless/Docker): Provide the content of `credentials.json` via an environment variable. The variable name should be `GMAIL_CREDENTIALS_` followed by the uppercase filename with dots replaced by underscores (e.g., `GMAIL_CREDENTIALS_CREDENTIALS_JSON`).
+3. **Authentication (Tokens):**
+   - The first run will attempt to open a browser for OAuth.
+   - For headless environments, you can provide the content of `token.json` via an environment variable following the same pattern as credentials (e.g., `GMAIL_TOKEN_TOKEN_JSON`).
+4. **Configuration:**
    - Create a `.env` file based on the environment variables in `src/config.py`.
    - Configure multiple accounts in the `GMAIL_ACCOUNTS` variable.
+     Example: `GMAIL_ACCOUNTS='[{"credentials": "credentials.json", "token": "token.json"}]'`
 4. **Run:** `python main.py` or `docker-compose up -d`
 
 ## FOSS Principle

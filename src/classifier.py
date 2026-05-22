@@ -9,13 +9,15 @@ from .gmail_client import GmailClient
 
 __all__ = ['EmailClassifier']
 
+from typing import Dict, Any, List, Tuple, Optional
+
 class EmailClassifier:
-    def __init__(self, rules_path='rules.json'):
+    def __init__(self, rules_path: str = 'rules.json') -> None:
         self.rules_path = rules_path
         self.rules = self._load_rules()
         self.ml_model = self._train_fallback_model()
 
-    def _load_rules(self):
+    def _load_rules(self) -> Dict[str, Any]:
         """
         Load and compile email classification rules from the configured JSON file.
         
@@ -56,7 +58,7 @@ class EmailClassifier:
                 logging.error(f"Error loading rules from {self.rules_path}: {e}")
         return compiled_rules
 
-    def _train_fallback_model(self):
+    def _train_fallback_model(self) -> Optional[Pipeline]:
         """
         Train a simple Naive Bayes model based on the patterns in rules.json.
         This serves as a fallback when exact regex matching fails.
@@ -96,7 +98,7 @@ class EmailClassifier:
             logging.error(f"Failed to train fallback ML model: {e}")
             return None
 
-    def reload_rules(self):
+    def reload_rules(self) -> None:
         """
         Reloads and recompiles classification rules from the configured rules file into the instance.
         
@@ -106,7 +108,7 @@ class EmailClassifier:
         self.rules = self._load_rules()
         self.ml_model = self._train_fallback_model()
 
-    def classify(self, message):
+    def classify(self, message: Dict[str, Any]) -> Tuple[str, List[str]]:
         """
         Determine the classification category and associated actions for an email message using the classifier's compiled rules.
         
@@ -130,6 +132,10 @@ class EmailClassifier:
         body_text = GmailClient._get_body_text(payload)
 
         text_to_analyze = f"{subject} {snippet} {body_text}".strip()
+        # Extract body text if available (injected by the agent or helper)
+        body = message.get('body_text', '')
+
+        text_to_analyze = f"{subject} {snippet} {body}".strip()
 
         for category, config in self.rules.items():
             # 1. Check Header Rules (High Priority)

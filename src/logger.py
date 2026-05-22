@@ -1,14 +1,33 @@
 import logging
+import json
 from logging.handlers import RotatingFileHandler
 import sys
+import os
 
 __all__ = ['setup_logging']
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+        }
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
 
 def setup_logging(log_file='mailagent.log'):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    use_json = os.getenv('LOG_FORMAT', 'text').lower() == 'json'
+
+    if use_json:
+        formatter = JsonFormatter()
+    else:
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)

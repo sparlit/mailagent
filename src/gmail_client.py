@@ -37,10 +37,12 @@ def retry_with_backoff(max_retries=5):
         return wrapper
     return decorator
 
+from typing import List, Optional, Iterable, Dict, Any, Union
+
 class GmailClient:
     _thread_local = threading.local()
 
-    def __init__(self, credentials_path='credentials.json', token_path='token.json'):
+    def __init__(self, credentials_path: str = 'credentials.json', token_path: str = 'token.json') -> None:
         self.credentials_path = credentials_path
         self.token_path = token_path
         self._creds = self._load_credentials()
@@ -48,7 +50,7 @@ class GmailClient:
         self._labels_lock = threading.Lock()
         self.email_address = self._get_user_email()
 
-    def _get_user_email(self):
+    def _get_user_email(self) -> str:
         """
         Return the authenticated user's email address.
         
@@ -104,6 +106,7 @@ class GmailClient:
         return body_text
 
     def _load_credentials(self):
+    def _load_credentials(self) -> Credentials:
         creds = None
         # Try loading from token_path
         if os.path.exists(self.token_path):
@@ -124,10 +127,23 @@ class GmailClient:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                if not os.path.exists(self.credentials_path):
-                    raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.credentials_path, SCOPES)
+                creds_data = None
+                if os.path.exists(self.credentials_path):
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        self.credentials_path, SCOPES)
+                else:
+                    env_creds = os.getenv(f'GMAIL_CREDENTIALS_{os.path.basename(self.credentials_path).upper().replace(".", "_")}')
+                    if env_creds:
+                        try:
+                            creds_data = json.loads(env_creds)
+                            flow = InstalledAppFlow.from_client_config(creds_data, SCOPES)
+                            logging.info(f"Loaded credentials from environment for {self.credentials_path}")
+                        except Exception as e:
+                            logging.error(f"Failed to load credentials from environment: {e}")
+                            raise FileNotFoundError(f"Credentials file not found at {self.credentials_path} and environment fallback failed.")
+                    else:
+                        raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
+
                 creds = flow.run_local_server(port=0)
 
             # Save the credentials
@@ -137,13 +153,13 @@ class GmailClient:
         return creds
 
     @property
-    def service(self):
+    def service(self) -> Any:
         """Thread-safe Gmail API service."""
         if not hasattr(self._thread_local, "service"):
             self._thread_local.service = build('gmail', 'v1', credentials=self._creds)
         return self._thread_local.service
 
-    def _get_labels(self):
+    def _get_labels(self) -> Dict[str, str]:
         """Thread-safe label caching."""
         with self._labels_lock:
             if self._labels_cache is None:
@@ -153,7 +169,7 @@ class GmailClient:
         return self._labels_cache
 
     @retry_with_backoff()
-    def list_unread_messages(self, user_id='me'):
+    def list_unread_messages(self, user_id: str = 'me') -> List[Dict[str, str]]:
         """List all unread messages, handling pagination."""
         with self._labels_lock:
             self._labels_cache = None
@@ -177,9 +193,42 @@ class GmailClient:
         return messages
 
     @retry_with_backoff()
-    def get_message(self, message_id, user_id='me'):
-        """Get a specific message by ID."""
-        return self.service.users().messages().get(userId=user_id, id=message_id).execute()
+    def get_message(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
+        """
+        Get a specific message by ID, including the full payload.
+
+        Returns:
+            dict: The full Gmail message object.
+        """
+        return self.service.users().messages().get(userId=user_id, id=message_id, format='full').execute()
+
+    def _get_body_text(self, payload: Dict[str, Any]) -> str:
+        """
+        Recursively extract plain text from a Gmail message payload.
+
+        Parameters:
+            payload (dict): The message payload or a part of it.
+
+        Returns:
+            str: The extracted plain text content.
+        """
+        body_text = ""
+        mime_type = payload.get('mimeType')
+        parts = payload.get('parts', [])
+        data = payload.get('body', {}).get('data')
+
+        if mime_type == 'text/plain' and data:
+            try:
+                decoded_data = base64.urlsafe_b64decode(data).decode('utf-8')
+                body_text += decoded_data
+            except Exception as e:
+                logging.error(f"Error decoding message body: {e}")
+
+        if parts:
+            for part in parts:
+                body_text += self._get_body_text(part)
+
+        return body_text
 
     def _modify_message_labels(self, message_id, add_label_ids=None, remove_label_ids=None, user_id='me'):
         """
@@ -191,6 +240,9 @@ class GmailClient:
         if remove_label_ids:
             body['removeLabelIds'] = remove_label_ids
 
+    @retry_with_backoff()
+    def mark_as_read(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
+        """Mark a message as read by removing the UNREAD label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body=body
@@ -203,6 +255,7 @@ class GmailClient:
 
     @retry_with_backoff()
     def move_to_trash(self, message_id, user_id='me'):
+    def move_to_trash(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Moves the specified message to the Trash.
         
@@ -212,7 +265,7 @@ class GmailClient:
         return self.service.users().messages().trash(userId=user_id, id=message_id).execute()
 
     @retry_with_backoff()
-    def archive(self, message_id, user_id='me'):
+    def archive(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Archive a message by removing the `INBOX` label.
         
@@ -222,7 +275,7 @@ class GmailClient:
         return self._modify_message_labels(message_id, remove_label_ids=['INBOX'], user_id=user_id)
 
     @retry_with_backoff()
-    def star(self, message_id, user_id='me'):
+    def star(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Star a message by adding Gmail's `STARRED` label.
         
@@ -232,7 +285,7 @@ class GmailClient:
         return self._modify_message_labels(message_id, add_label_ids=['STARRED'], user_id=user_id)
 
     @retry_with_backoff()
-    def unstar(self, message_id, user_id='me'):
+    def unstar(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Remove the STARRED label from a message.
 
@@ -242,7 +295,7 @@ class GmailClient:
         return self._modify_message_labels(message_id, remove_label_ids=['STARRED'], user_id=user_id)
 
     @retry_with_backoff()
-    def mark_important(self, message_id, user_id='me'):
+    def mark_important(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Add the IMPORTANT label to a message.
 
@@ -252,7 +305,7 @@ class GmailClient:
         return self._modify_message_labels(message_id, add_label_ids=['IMPORTANT'], user_id=user_id)
 
     @retry_with_backoff()
-    def forward_message(self, message_id, to, user_id='me'):
+    def forward_message(self, message_id: str, to: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Forward a message's snippet to another recipient.
 
@@ -283,7 +336,48 @@ class GmailClient:
         return self.service.users().messages().send(userId=user_id, body={'raw': encoded_message}).execute()
 
     @retry_with_backoff()
-    def apply_labels(self, message_id, label_ids, user_id='me'):
+    def send_reply(self, original_message_id: str, subject: str, body: str, user_id: str = 'me') -> Dict[str, Any]:
+        """
+        Send a reply to an existing message, maintaining the thread.
+
+        Parameters:
+            original_message_id (str): ID of the message to reply to.
+            subject (str): Subject for the reply.
+            body (str): Body text for the reply.
+            user_id (str): User identifier.
+
+        Returns:
+            dict: The Gmail API response for the sent message.
+        """
+        original_msg = self.get_message(original_message_id, user_id=user_id)
+        thread_id = original_msg.get('threadId')
+
+        headers = {h['name'].lower(): h['value'] for h in original_msg.get('payload', {}).get('headers', [])}
+        message_id_header = headers.get('message-id')
+        references = headers.get('references', '')
+
+        # Determine the recipient (reply-to or from)
+        to = headers.get('reply-to', headers.get('from'))
+
+        reply = EmailMessage()
+        reply.set_content(body)
+        reply['To'] = to
+        reply['From'] = self.email_address
+        reply['Subject'] = subject
+        reply['In-Reply-To'] = message_id_header
+        reply['References'] = f"{references} {message_id_header}".strip()
+
+        encoded_message = base64.urlsafe_b64encode(reply.as_bytes()).decode()
+        return self.service.users().messages().send(
+            userId=user_id,
+            body={
+                'raw': encoded_message,
+                'threadId': thread_id
+            }
+        ).execute()
+
+    @retry_with_backoff()
+    def apply_labels(self, message_id: str, label_ids: Iterable[str], user_id: str = 'me') -> Optional[Dict[str, Any]]:
         """
         Apply labels to the specified message, creating any custom labels that do not yet exist.
         

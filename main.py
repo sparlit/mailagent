@@ -1,7 +1,7 @@
 import sys
 import logging
 import signal
-from src.gmail_client import GmailClient
+from src.gmail_client import GmailClient, MockGmailClient
 from src.classifier import EmailClassifier
 from src.agent import MailAgent
 from src.database import Database
@@ -34,6 +34,15 @@ def main():
                 )
                 gmail_clients.append(client)
             except Exception as e:
+                if config.DRY_RUN:
+                    logging.warning(f"Failed to initialize Gmail account {acc}, falling back to MockGmailClient for DRY_RUN: {e}")
+                    client = MockGmailClient(
+                        credentials_path=acc.get('credentials'),
+                        token_path=acc.get('token')
+                    )
+                    gmail_clients.append(client)
+                else:
+                    logging.error(f"Failed to initialize account {acc}: {e}")
                 logging.error(f"Failed to initialize account {acc}: {e}")
                 logging.error("Ensure 'credentials.json' exists in the root or is provided via GMAIL_CREDENTIALS_CREDENTIALS_JSON env var.")
 

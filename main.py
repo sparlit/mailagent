@@ -35,9 +35,11 @@ def main():
                 gmail_clients.append(client)
             except Exception as e:
                 logging.error(f"Failed to initialize account {acc}: {e}")
+                logging.error("Ensure 'credentials.json' exists in the root or is provided via GMAIL_CREDENTIALS_CREDENTIALS_JSON env var.")
 
         if not gmail_clients:
-            logging.error("No valid Gmail accounts configured. Exiting.")
+            logging.error("No valid Gmail accounts could be initialized. Please check your credentials and configuration.")
+            logging.error("Refer to README.md for setup instructions and environment variable configuration.")
             sys.exit(1)
 
         db = Database()

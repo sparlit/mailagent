@@ -87,10 +87,23 @@ class GmailClient:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                if not os.path.exists(self.credentials_path):
-                    raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.credentials_path, SCOPES)
+                creds_data = None
+                if os.path.exists(self.credentials_path):
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        self.credentials_path, SCOPES)
+                else:
+                    env_creds = os.getenv(f'GMAIL_CREDENTIALS_{os.path.basename(self.credentials_path).upper().replace(".", "_")}')
+                    if env_creds:
+                        try:
+                            creds_data = json.loads(env_creds)
+                            flow = InstalledAppFlow.from_client_config(creds_data, SCOPES)
+                            logging.info(f"Loaded credentials from environment for {self.credentials_path}")
+                        except Exception as e:
+                            logging.error(f"Failed to load credentials from environment: {e}")
+                            raise FileNotFoundError(f"Credentials file not found at {self.credentials_path} and environment fallback failed.")
+                    else:
+                        raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
+
                 creds = flow.run_local_server(port=0)
 
             # Save the credentials

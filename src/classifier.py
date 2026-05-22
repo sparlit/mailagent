@@ -5,6 +5,7 @@ import logging
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
+from .gmail_client import GmailClient
 
 __all__ = ['EmailClassifier']
 
@@ -109,12 +110,12 @@ class EmailClassifier:
         """
         Determine the classification category and associated actions for an email message using the classifier's compiled rules.
         
-        Header-based rules are evaluated first (highest priority). If no header rule matches for a category, general regex patterns are tested against the sender and the combined subject+snippet text. Matching stops at the first category that matches.
+        Header-based rules are evaluated first (highest priority). If no header rule matches for a category, general regex patterns are tested against the sender and the combined subject, snippet, and body text. Matching stops at the first category that matches.
         
         Parameters:
             message (dict): Email data expected to contain optional keys:
                 - 'snippet' (str): short message preview.
-                - 'payload' (dict): may contain 'headers' (list of dicts with 'name' and 'value').
+                - 'payload' (dict): may contain 'headers' (list of dicts with 'name' and 'value') and 'parts'.
         
         Returns:
             tuple: `(category, actions)` where `category` is the matched category name (str) and `actions` is the list of actions for that category. Returns `('INBOX', [])` if no rules match.
@@ -126,8 +127,9 @@ class EmailClassifier:
         header_dict = {h['name'].lower(): h['value'] for h in headers}
         subject = header_dict.get('subject', '')
         sender = header_dict.get('from', '')
+        body_text = GmailClient._get_body_text(payload)
 
-        text_to_analyze = f"{subject} {snippet}"
+        text_to_analyze = f"{subject} {snippet} {body_text}".strip()
 
         for category, config in self.rules.items():
             # 1. Check Header Rules (High Priority)

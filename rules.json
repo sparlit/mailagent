@@ -10,7 +10,8 @@
       "unclaimed (money|funds)"
     ],
     "header_rules": [
-      { "name": "X-Spam-Flag", "pattern": "YES" }
+      { "name": "X-Spam-Flag", "pattern": "YES" },
+      { "name": "X-Spam-Status", "pattern": "Yes" }
     ],
     "actions": ["trash"]
   },
@@ -27,6 +28,17 @@
       { "name": "List-ID", "pattern": "(facebook|twitter|linkedin|instagram)" }
     ],
     "actions": ["label", "mark_read"]
+  },
+  "WORK": {
+    "patterns": [
+      "project",
+      "meeting",
+      "deadline",
+      "report",
+      "proposal",
+      "attachment"
+    ],
+    "actions": ["label", "mark_important"]
   },
   "UPDATES": {
     "patterns": [

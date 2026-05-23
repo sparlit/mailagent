@@ -12,6 +12,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from typing import List, Optional, Iterable, Dict, Any, Union
 
 __all__ = ['GmailClient', 'MockGmailClient']
 
@@ -36,8 +37,6 @@ def retry_with_backoff(max_retries=5):
             return func(*args, **kwargs)
         return wrapper
     return decorator
-
-from typing import List, Optional, Iterable, Dict, Any, Union
 
 class GmailClient:
     _thread_local = threading.local()
@@ -105,7 +104,6 @@ class GmailClient:
 
         return body_text
 
-    def _load_credentials(self):
     def _load_credentials(self) -> Credentials:
         creds = None
         # Try loading from token_path
@@ -202,35 +200,8 @@ class GmailClient:
         """
         return self.service.users().messages().get(userId=user_id, id=message_id, format='full').execute()
 
-    def _get_body_text(self, payload: Dict[str, Any]) -> str:
-        """
-        Recursively extract plain text from a Gmail message payload.
-
-        Parameters:
-            payload (dict): The message payload or a part of it.
-
-        Returns:
-            str: The extracted plain text content.
-        """
-        body_text = ""
-        mime_type = payload.get('mimeType')
-        parts = payload.get('parts', [])
-        data = payload.get('body', {}).get('data')
-
-        if mime_type == 'text/plain' and data:
-            try:
-                decoded_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                body_text += decoded_data
-            except Exception as e:
-                logging.error(f"Error decoding message body: {e}")
-
-        if parts:
-            for part in parts:
-                body_text += self._get_body_text(part)
-
-        return body_text
-
-    def _modify_message_labels(self, message_id, add_label_ids=None, remove_label_ids=None, user_id='me'):
+    @retry_with_backoff()
+    def _modify_message_labels(self, message_id: str, add_label_ids: Optional[List[str]] = None, remove_label_ids: Optional[List[str]] = None, user_id: str = 'me') -> Dict[str, Any]:
         """
         Helper to modify message labels using batchModify.
         """
@@ -240,21 +211,17 @@ class GmailClient:
         if remove_label_ids:
             body['removeLabelIds'] = remove_label_ids
 
-    @retry_with_backoff()
-    def mark_as_read(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """Mark a message as read by removing the UNREAD label."""
         return self.service.users().messages().batchModify(
             userId=user_id,
             body=body
         ).execute()
 
     @retry_with_backoff()
-    def mark_as_read(self, message_id, user_id='me'):
+    def mark_as_read(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """Mark a message as read by removing the UNREAD label."""
         return self._modify_message_labels(message_id, remove_label_ids=['UNREAD'], user_id=user_id)
 
     @retry_with_backoff()
-    def move_to_trash(self, message_id, user_id='me'):
     def move_to_trash(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """
         Moves the specified message to the Trash.

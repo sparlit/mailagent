@@ -6,6 +6,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from .gmail_client import GmailClient
+from . import config
 
 __all__ = ['EmailClassifier']
 
@@ -40,10 +41,10 @@ class EmailClassifier:
             try:
                 with open(self.rules_path, 'r') as f:
                     raw_rules = json.load(f)
-                    for category, config in raw_rules.items():
-                        patterns = [re.compile(p, re.I) for p in config.get('patterns', [])]
+                    for category, config_data in raw_rules.items():
+                        patterns = [re.compile(p, re.I) for p in config_data.get('patterns', [])]
                         header_rules = []
-                        for hr in config.get('header_rules', []):
+                        for hr in config_data.get('header_rules', []):
                             header_rules.append({
                                 'name': hr['name'].lower(),
                                 'pattern': re.compile(hr['pattern'], re.I)
@@ -52,7 +53,7 @@ class EmailClassifier:
                         compiled_rules[category] = {
                             'patterns': patterns,
                             'header_rules': header_rules,
-                            'actions': config.get('actions', [])
+                            'actions': config_data.get('actions', [])
                         }
             except (json.JSONDecodeError, Exception) as e:
                 logging.error(f"Error loading rules from {self.rules_path}: {e}")
@@ -72,8 +73,8 @@ class EmailClassifier:
         try:
             with open(self.rules_path, 'r') as f:
                 raw_rules = json.load(f)
-                for category, config in raw_rules.items():
-                    for pattern in config.get('patterns', []):
+                for category, config_data in raw_rules.items():
+                    for pattern in config_data.get('patterns', []):
                         # We use the raw pattern string (simplified) for training
                         clean_pattern = pattern.replace('(', '').replace(')', '').replace('|', ' ').replace('.*', ' ')
                         training_data.append(clean_pattern)
@@ -129,25 +130,25 @@ class EmailClassifier:
         header_dict = {h['name'].lower(): h['value'] for h in headers}
         subject = header_dict.get('subject', '')
         sender = header_dict.get('from', '')
-        body_text = GmailClient._get_body_text(payload)
 
-        text_to_analyze = f"{subject} {snippet} {body_text}".strip()
         # Extract body text if available (injected by the agent or helper)
         body = message.get('body_text', '')
+        if not body:
+            body = GmailClient._get_body_text(payload)
 
         text_to_analyze = f"{subject} {snippet} {body}".strip()
 
-        for category, config in self.rules.items():
+        for category, config_data in self.rules.items():
             # 1. Check Header Rules (High Priority)
-            for hr in config.get('header_rules', []):
+            for hr in config_data.get('header_rules', []):
                 val = header_dict.get(hr['name'])
                 if val and hr['pattern'].search(val):
-                    return category, config['actions']
+                    return category, config_data['actions']
 
             # 2. Check General Patterns
-            for pattern in config['patterns']:
+            for pattern in config_data['patterns']:
                 if pattern.search(sender) or pattern.search(text_to_analyze):
-                    return category, config['actions']
+                    return category, config_data['actions']
 
         # 3. ML Fallback
         if self.ml_model:
@@ -155,7 +156,7 @@ class EmailClassifier:
                 # Get probabilities
                 probs = self.ml_model.predict_proba([text_to_analyze])[0]
                 max_prob = max(probs)
-                if max_prob > 0.5:  # Confidence threshold
+                if max_prob > config.ML_CONFIDENCE_THRESHOLD:  # Confidence threshold
                     category = self.ml_model.classes_[probs.argmax()]
                     logging.info(f"ML Fallback: Classified message as {category} with confidence {max_prob:.2f}")
                     return category, self.rules[category]['actions']

@@ -9,6 +9,14 @@ class Database:
         self._lock = threading.Lock()
         self._init_db()
 
+    def _get_connection(self):
+        """Helper to get connection, handles :memory: for tests."""
+        if self.db_path == ':memory:':
+            if not hasattr(self, '_memory_conn'):
+                self._memory_conn = sqlite3.connect(':memory:', check_same_thread=False)
+            return self._memory_conn
+        return sqlite3.connect(self.db_path)
+
     def _init_db(self):
         """
         Ensure the SQLite database at self.db_path contains the required schema for the application.
@@ -16,7 +24,8 @@ class Database:
         Creates the `processed_messages` table (columns: `message_id`, `account_email`, `processed_at` with a default of the current timestamp) with a composite primary key on `(message_id, account_email)`, and the `stats` table (columns: `account_email`, `action`, `category`, `count` with default 0) with a composite primary key on `(account_email, action, category)`. The operation is performed under the instance lock and commits any schema changes.
         """
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            conn = self._get_connection()
+            try:
                 conn.execute('''
                     CREATE TABLE IF NOT EXISTS processed_messages (
                         message_id TEXT,
@@ -34,7 +43,20 @@ class Database:
                         PRIMARY KEY (account_email, action, category)
                     )
                 ''')
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS activity_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        account_email TEXT,
+                        message_id TEXT,
+                        action TEXT,
+                        category TEXT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
                 conn.commit()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
 
     def is_processed(self, message_id, account_email):
         """
@@ -48,34 +70,78 @@ class Database:
             True if a record exists for the given message_id and account_email, False otherwise.
         """
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            conn = self._get_connection()
+            try:
                 cursor = conn.execute(
                     'SELECT 1 FROM processed_messages WHERE message_id = ? AND account_email = ?',
                     (message_id, account_email)
                 )
                 return cursor.fetchone() is not None
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
 
     def mark_as_processed(self, message_id, account_email):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            conn = self._get_connection()
+            try:
                 conn.execute(
                     'INSERT OR IGNORE INTO processed_messages (message_id, account_email) VALUES (?, ?)',
                     (message_id, account_email)
                 )
                 conn.commit()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
 
     def record_stat(self, account_email, action, category):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            conn = self._get_connection()
+            try:
                 conn.execute('''
                     INSERT INTO stats (account_email, action, category, count)
                     VALUES (?, ?, ?, 1)
                     ON CONFLICT(account_email, action, category) DO UPDATE SET count = count + 1
                 ''', (account_email, action, category))
                 conn.commit()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
 
     def get_stats(self):
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            conn = self._get_connection()
+            try:
                 cursor = conn.execute('SELECT account_email, action, category, count FROM stats')
                 return cursor.fetchall()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
+
+    def log_activity(self, account_email, message_id, action, category):
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                conn.execute('''
+                    INSERT INTO activity_log (account_email, message_id, action, category)
+                    VALUES (?, ?, ?, ?)
+                ''', (account_email, message_id, action, category))
+                conn.commit()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
+
+    def get_recent_activity(self, limit=10):
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute('''
+                    SELECT account_email, message_id, action, category, timestamp
+                    FROM activity_log
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                ''', (limit,))
+                return cursor.fetchall()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()

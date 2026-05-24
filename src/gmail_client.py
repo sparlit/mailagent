@@ -1,5 +1,6 @@
 import os
 import os.path
+import re
 import time
 import random
 import threading
@@ -71,6 +72,7 @@ class GmailClient:
     def _get_body_text(payload):
         """
         Recursively extract plain text from a Gmail message payload.
+        Fallbacks to text/html (stripped) if text/plain is not found.
 
         Parameters:
             payload (dict): Gmail message payload or part.
@@ -79,30 +81,41 @@ class GmailClient:
             str: Extracted plain text.
         """
         body_text = ""
+        html_text = ""
         parts = payload.get('parts', [])
 
         if not parts:
+            mime_type = payload.get('mimeType')
             data = payload.get('body', {}).get('data', '')
             if data:
                 try:
-                    body_text = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+                    decoded = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+                    if mime_type == 'text/plain':
+                        return decoded
+                    elif mime_type == 'text/html':
+                        return re.sub('<[^<]+?>', '', decoded)
                 except Exception:
                     pass
-            return body_text
+            return ""
 
         for part in parts:
             mime_type = part.get('mimeType')
-            if mime_type == 'text/plain':
-                data = part.get('body', {}).get('data', '')
-                if data:
-                    try:
-                        body_text += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                    except Exception:
-                        pass
+            data = part.get('body', {}).get('data', '')
+            if mime_type == 'text/plain' and data:
+                try:
+                    body_text += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+            elif mime_type == 'text/html' and data:
+                try:
+                    decoded_html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+                    html_text += re.sub('<[^<]+?>', '', decoded_html)
+                except Exception:
+                    pass
             elif mime_type.startswith('multipart/'):
                 body_text += GmailClient._get_body_text(part)
 
-        return body_text
+        return body_text if body_text else html_text
 
     def _load_credentials(self) -> Credentials:
         creds = None

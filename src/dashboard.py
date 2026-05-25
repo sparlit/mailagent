@@ -38,7 +38,27 @@ HTML_TEMPLATE = '''
         </div>
     </div>
     <div class="stats-container">
-        <h2>Action Statistics</h2>
+        <h2>Recent Activity</h2>
+        <table>
+            <tr>
+                <th>Time</th>
+                <th>Account</th>
+                <th>Message ID</th>
+                <th>Action</th>
+                <th>Category</th>
+            </tr>
+            {% for act in recent_activity %}
+            <tr>
+                <td>{{ act[4] }}</td>
+                <td>{{ act[0] }}</td>
+                <td>{{ act[1] }}</td>
+                <td>{{ act[2] }}</td>
+                <td>{{ act[3] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h2>Action Statistics (Aggregate)</h2>
         <table>
             <tr>
                 <th>Account</th>
@@ -137,16 +157,22 @@ HTML_TEMPLATE = '''
 @app.route('/')
 def index():
     """
-    Render the dashboard page showing action statistics and the number of unique monitored accounts.
+    Render the dashboard page showing action statistics, recent activity, and the number of unique monitored accounts.
     
-    Fetches current stats from the shared database, computes the count of unique accounts from the first element of each stats row, and returns the rendered HTML template populated with `stats` and `accounts_count`.
+    Fetches current stats and recent activity from the shared database, computes the count of unique accounts from the first element of each stats row, and returns the rendered HTML template populated with `stats`, `recent_activity`, and `accounts_count`.
     
     Returns:
         str: Rendered HTML for the dashboard page containing the stats table and `accounts_count`.
     """
     stats = db.get_stats()
+    recent_activity = db.get_recent_activity(10)
     unique_accounts = set(stat[0] for stat in stats)
-    return render_template_string(HTML_TEMPLATE, stats=stats, accounts_count=len(unique_accounts))
+    return render_template_string(
+        HTML_TEMPLATE,
+        stats=stats,
+        recent_activity=recent_activity,
+        accounts_count=len(unique_accounts)
+    )
 
 @app.route('/api/stats')
 def api_stats():

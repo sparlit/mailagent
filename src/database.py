@@ -34,6 +34,16 @@ class Database:
                         PRIMARY KEY (account_email, action, category)
                     )
                 ''')
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS activity_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        account_email TEXT,
+                        message_id TEXT,
+                        action TEXT,
+                        category TEXT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
                 conn.commit()
 
     def is_processed(self, message_id, account_email):
@@ -78,4 +88,30 @@ class Database:
         with self._lock:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute('SELECT account_email, action, category, count FROM stats')
+                return cursor.fetchall()
+
+    def record_activity(self, account_email, message_id, action, category):
+        """
+        Log an action performed on a message to the activity_log table.
+        """
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute('''
+                    INSERT INTO activity_log (account_email, message_id, action, category)
+                    VALUES (?, ?, ?, ?)
+                ''', (account_email, message_id, action, category))
+                conn.commit()
+
+    def get_recent_activity(self, limit=10):
+        """
+        Retrieve the most recent logged activities.
+        """
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute('''
+                    SELECT account_email, message_id, action, category, timestamp
+                    FROM activity_log
+                    ORDER BY id DESC
+                    LIMIT ?
+                ''', (limit,))
                 return cursor.fetchall()

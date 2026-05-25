@@ -6,6 +6,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from .gmail_client import GmailClient
+from . import config
 
 __all__ = ['EmailClassifier']
 
@@ -117,6 +118,7 @@ class EmailClassifier:
         Parameters:
             message (dict): Email data expected to contain optional keys:
                 - 'snippet' (str): short message preview.
+                - 'body_text' (str): full message body (optional).
                 - 'payload' (dict): may contain 'headers' (list of dicts with 'name' and 'value') and 'parts'.
         
         Returns:
@@ -129,25 +131,25 @@ class EmailClassifier:
         header_dict = {h['name'].lower(): h['value'] for h in headers}
         subject = header_dict.get('subject', '')
         sender = header_dict.get('from', '')
-        body_text = GmailClient._get_body_text(payload)
 
-        text_to_analyze = f"{subject} {snippet} {body_text}".strip()
-        # Extract body text if available (injected by the agent or helper)
-        body = message.get('body_text', '')
+        # Use body_text if provided, otherwise extract from payload
+        body = message.get('body_text')
+        if body is None:
+            body = GmailClient._get_body_text(payload)
 
         text_to_analyze = f"{subject} {snippet} {body}".strip()
 
-        for category, config in self.rules.items():
+        for category, cat_config in self.rules.items():
             # 1. Check Header Rules (High Priority)
-            for hr in config.get('header_rules', []):
+            for hr in cat_config.get('header_rules', []):
                 val = header_dict.get(hr['name'])
                 if val and hr['pattern'].search(val):
-                    return category, config['actions']
+                    return category, cat_config['actions']
 
             # 2. Check General Patterns
-            for pattern in config['patterns']:
+            for pattern in cat_config['patterns']:
                 if pattern.search(sender) or pattern.search(text_to_analyze):
-                    return category, config['actions']
+                    return category, cat_config['actions']
 
         # 3. ML Fallback
         if self.ml_model:
@@ -155,7 +157,7 @@ class EmailClassifier:
                 # Get probabilities
                 probs = self.ml_model.predict_proba([text_to_analyze])[0]
                 max_prob = max(probs)
-                if max_prob > 0.5:  # Confidence threshold
+                if max_prob > config.ML_CONFIDENCE_THRESHOLD:  # Configurable Confidence threshold
                     category = self.ml_model.classes_[probs.argmax()]
                     logging.info(f"ML Fallback: Classified message as {category} with confidence {max_prob:.2f}")
                     return category, self.rules[category]['actions']

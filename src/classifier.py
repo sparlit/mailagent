@@ -118,6 +118,7 @@ class EmailClassifier:
         Parameters:
             message (dict): Email data expected to contain optional keys:
                 - 'snippet' (str): short message preview.
+                - 'body_text' (str): full message body (optional).
                 - 'payload' (dict): may contain 'headers' (list of dicts with 'name' and 'value') and 'parts'.
         
         Returns:
@@ -130,6 +131,10 @@ class EmailClassifier:
         header_dict = {h['name'].lower(): h['value'] for h in headers}
         subject = header_dict.get('subject', '')
         sender = header_dict.get('from', '')
+
+        # Use body_text if provided, otherwise extract from payload
+        body = message.get('body_text')
+        if body is None:
         # Use body_text if provided by the agent, else extract it
         body = message.get('body_text')
         if body is None:
@@ -141,6 +146,17 @@ class EmailClassifier:
 
         text_to_analyze = f"{subject} {snippet} {body}".strip()
 
+        for category, cat_config in self.rules.items():
+            # 1. Check Header Rules (High Priority)
+            for hr in cat_config.get('header_rules', []):
+                val = header_dict.get(hr['name'])
+                if val and hr['pattern'].search(val):
+                    return category, cat_config['actions']
+
+            # 2. Check General Patterns
+            for pattern in cat_config['patterns']:
+                if pattern.search(sender) or pattern.search(text_to_analyze):
+                    return category, cat_config['actions']
         for category, config_rules in self.rules.items():
             # 1. Check Header Rules (High Priority)
             for hr in config_rules.get('header_rules', []):
@@ -170,6 +186,7 @@ class EmailClassifier:
                 # Get probabilities
                 probs = self.ml_model.predict_proba([text_to_analyze])[0]
                 max_prob = max(probs)
+                if max_prob > config.ML_CONFIDENCE_THRESHOLD:  # Configurable Confidence threshold
                 if max_prob > config.ML_CONFIDENCE_THRESHOLD:
                 if max_prob > config.ML_CONFIDENCE_THRESHOLD:  # Confidence threshold
                     category = self.ml_model.classes_[probs.argmax()]

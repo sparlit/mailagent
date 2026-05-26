@@ -114,6 +114,11 @@ class Database:
             try:
                 cursor = conn.execute('SELECT account_email, action, category, count FROM stats')
                 return cursor.fetchall()
+
+    def record_activity(self, account_email, message_id, action, category):
+        """
+        Log an action performed on a message to the activity_log table.
+        """
             finally:
                 if self.db_path != ':memory:':
                     conn.close()
@@ -131,6 +136,20 @@ class Database:
                     VALUES (?, ?, ?, ?)
                 ''', (account_email, message_id, action, category))
                 conn.commit()
+
+    def get_recent_activity(self, limit=10):
+        """
+        Retrieve the most recent logged activities.
+        """
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute('''
+                    SELECT account_email, message_id, action, category, timestamp
+                    FROM activity_log
+                    ORDER BY id DESC
+                    LIMIT ?
+                ''', (limit,))
+                return cursor.fetchall()
             finally:
                 if self.db_path != ':memory:':
                     conn.close()

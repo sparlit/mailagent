@@ -80,6 +80,9 @@ class MailAgent:
                         template_id = action.split(':', 1)[1]
                         self._handle_reply_action(client, msg_id, template_id, message_context)
 
+                # Record statistic and activity log
+                self.db.record_stat(client.email_address, action, category)
+                self.db.record_activity(client.email_address, msg_id, action, category)
                 # Record statistic and log activity
                 self.db.record_stat(client.email_address, action, category)
                 self.db.log_activity(client.email_address, msg_id, action, category)

@@ -72,6 +72,8 @@ class GmailClient:
     @staticmethod
     def _get_body_text(payload):
         """
+        Recursively extract text from a Gmail message payload.
+        Prioritizes text/plain, falls back to text/html.
         Recursively extract plain text from a Gmail message payload.
         Fallbacks to text/html (stripped) if text/plain is not found.
 
@@ -79,9 +81,10 @@ class GmailClient:
             payload (dict): Gmail message payload or part.
 
         Returns:
-            str: Extracted plain text.
+            str: Extracted text content.
         """
         body_text = ""
+        html_content = ""
         html_text = ""
         parts = payload.get('parts', [])
 
@@ -91,6 +94,9 @@ class GmailClient:
             if data:
                 try:
                     decoded = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+                    if mime_type == 'text/html':
+                        return re.sub('<[^<]+?>', ' ', decoded).strip()
+                    return decoded
                     if mime_type == 'text/plain':
                         return decoded
                     elif mime_type == 'text/html':
@@ -102,6 +108,7 @@ class GmailClient:
         for part in parts:
             mime_type = part.get('mimeType')
             data = part.get('body', {}).get('data', '')
+
             if mime_type == 'text/plain' and data:
                 try:
                     body_text += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
@@ -109,6 +116,7 @@ class GmailClient:
                     pass
             elif mime_type == 'text/html' and data:
                 try:
+                    html_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
                     decoded_html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
                     html_text += re.sub('<[^<]+?>', '', decoded_html)
                 except Exception:
@@ -116,6 +124,11 @@ class GmailClient:
             elif mime_type.startswith('multipart/'):
                 body_text += GmailClient._get_body_text(part)
 
+        if not body_text.strip() and html_content.strip():
+            # Basic HTML tag stripping
+            return re.sub('<[^<]+?>', ' ', html_content).strip()
+
+        return body_text.strip()
         return body_text if body_text else html_text
         # Fallback to HTML if no plain text was found
         if not body_text:
@@ -301,7 +314,7 @@ class GmailClient:
     @retry_with_backoff()
     def forward_message(self, message_id: str, to: str, user_id: str = 'me') -> Dict[str, Any]:
         """
-        Forward a message's snippet to another recipient.
+        Forward a message to another recipient.
 
         Parameters:
             message_id (str): ID of the message to forward.
@@ -312,7 +325,10 @@ class GmailClient:
             dict: The Gmail API response for the sent message.
         """
         original_msg = self.get_message(message_id, user_id=user_id)
-        snippet = original_msg.get('snippet', '')
+        body = self._get_body_text(original_msg.get('payload', {}))
+        if not body:
+            body = original_msg.get('snippet', '')
+
         subject = 'Fwd: (no subject)'
 
         for header in original_msg.get('payload', {}).get('headers', []):
@@ -321,7 +337,7 @@ class GmailClient:
                 break
 
         message = EmailMessage()
-        message.set_content(f"Forwarded message snippet:\n\n{snippet}\n\n--- Sent by MailAgent ---")
+        message.set_content(f"Forwarded message content:\n\n{body}\n\n--- Sent by MailAgent ---")
         message['To'] = to
         message['From'] = self.email_address
         message['Subject'] = subject

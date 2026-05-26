@@ -7,6 +7,7 @@ import threading
 import logging
 import json
 import base64
+import re
 from email.message import EmailMessage
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -116,6 +117,19 @@ class GmailClient:
                 body_text += GmailClient._get_body_text(part)
 
         return body_text if body_text else html_text
+        # Fallback to HTML if no plain text was found
+        if not body_text:
+            for part in parts:
+                if part.get('mimeType') == 'text/html':
+                    data = part.get('body', {}).get('data', '')
+                    if data:
+                        try:
+                            html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+                            # Simple regex to strip HTML tags
+                            body_text += re.sub(r'<[^>]+>', '', html)
+                        except Exception:
+                            pass
+        return body_text
 
     def _load_credentials(self) -> Credentials:
         creds = None

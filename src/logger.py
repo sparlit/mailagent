@@ -20,7 +20,13 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logging(log_file='mailagent.log'):
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+
+    # Use log level from config
+    try:
+        level = getattr(logging, config.LOG_LEVEL)
+    except AttributeError:
+        level = logging.INFO
+    logger.setLevel(level)
 
     use_json = os.getenv('LOG_FORMAT', 'text').lower() == 'json'
 

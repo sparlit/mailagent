@@ -83,6 +83,9 @@ class MailAgent:
                 # Record statistic and activity log
                 self.db.record_stat(client.email_address, action, category)
                 self.db.record_activity(client.email_address, msg_id, action, category)
+                # Record statistic and log activity
+                self.db.record_stat(client.email_address, action, category)
+                self.db.log_activity(client.email_address, msg_id, action, category)
             except Exception as e:
                 logging.error(f"Failed to execute action {action} on {msg_id}: {e}")
 
@@ -177,8 +180,19 @@ class MailAgent:
                         logging.info(f"No unread messages found for {client.email_address}")
                         continue
 
+                    # Implement MAX_MESSAGES_PER_CYCLE limit
+                    limit = config.MAX_MESSAGES_PER_CYCLE
+                    if len(messages) > limit:
+                        logging.warning(f"Found {len(messages)} messages for {client.email_address}, but limiting to {limit} per cycle.")
+                        messages = messages[:limit]
+
                     logging.info(f"Found {len(messages)} unread messages in {client.email_address}")
-                    for msg in messages:
+                    # Limit processing to MAX_MESSAGES_PER_CYCLE
+                    to_process = messages[:config.MAX_MESSAGES_PER_CYCLE]
+                    if len(messages) > config.MAX_MESSAGES_PER_CYCLE:
+                        logging.info(f"Limiting processing to first {config.MAX_MESSAGES_PER_CYCLE} messages for {client.email_address}")
+
+                    for msg in to_process:
                         all_tasks.append(executor.submit(self.process_message, client, msg))
                 except Exception as e:
                     logging.error(f"Error listing messages for {client.email_address}: {e}")
@@ -215,6 +229,7 @@ class MailAgent:
         while True:
             try:
                 self.classifier.reload_rules()
+                self.db.cleanup_old_data(days=config.DB_RETENTION_DAYS)
                 self.run_once()
             except Exception as e:
                 logging.error(f"Error in MailAgent loop: {e}")

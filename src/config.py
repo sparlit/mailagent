@@ -13,6 +13,9 @@ __all__ = [
     'DASHBOARD_ENABLED',
     'DASHBOARD_PORT',
     'ML_CONFIDENCE_THRESHOLD',
+    'MAX_MESSAGES_PER_CYCLE',
+    'LOG_LEVEL',
+    'DB_RETENTION_DAYS',
     'get_accounts'
 ]
 
@@ -30,6 +33,9 @@ DRY_RUN = get_bool_env('DRY_RUN', False)
 DASHBOARD_ENABLED = get_bool_env('DASHBOARD_ENABLED', True)
 DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '5000'))
 ML_CONFIDENCE_THRESHOLD = float(os.getenv('ML_CONFIDENCE_THRESHOLD', '0.5'))
+MAX_MESSAGES_PER_CYCLE = int(os.getenv('MAX_MESSAGES_PER_CYCLE', '50'))
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+DB_RETENTION_DAYS = int(os.getenv('DB_RETENTION_DAYS', '30'))
 
 def get_accounts():
     """

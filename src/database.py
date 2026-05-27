@@ -114,11 +114,6 @@ class Database:
             try:
                 cursor = conn.execute('SELECT account_email, action, category, count FROM stats')
                 return cursor.fetchall()
-
-    def record_activity(self, account_email, message_id, action, category):
-        """
-        Log an action performed on a message to the activity_log table.
-        """
             finally:
                 if self.db_path != ':memory:':
                     conn.close()
@@ -127,22 +122,22 @@ class Database:
         with self._lock:
             conn = self._get_connection()
             try:
-
-    def log_activity(self, account_email, message_id, action, category):
-        with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
                 conn.execute('''
                     INSERT INTO activity_log (account_email, message_id, action, category)
                     VALUES (?, ?, ?, ?)
                 ''', (account_email, message_id, action, category))
                 conn.commit()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()
 
     def get_recent_activity(self, limit=10):
         """
         Retrieve the most recent logged activities.
         """
         with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
+            conn = self._get_connection()
+            try:
                 cursor = conn.execute('''
                     SELECT account_email, message_id, action, category, timestamp
                     FROM activity_log
@@ -154,34 +149,13 @@ class Database:
                 if self.db_path != ':memory:':
                     conn.close()
 
-    def get_recent_activity(self, limit=10):
+    def cleanup_old_data(self, days=30):
         with self._lock:
             conn = self._get_connection()
             try:
-                cursor = conn.execute('''
-                    SELECT account_email, message_id, action, category, timestamp
-                    FROM activity_log
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                ''', (limit,))
-                return cursor.fetchall()
-            finally:
-                if self.db_path != ':memory:':
-                    conn.close()
-
-    def get_recent_activity(self, limit=10):
-        with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute('''
-                    SELECT account_email, message_id, action, category, timestamp
-                    FROM activity_log
-                    ORDER BY timestamp DESC LIMIT ?
-                ''', (limit,))
-                return cursor.fetchall()
-
-    def cleanup_old_data(self, days=30):
-        with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
                 conn.execute("DELETE FROM activity_log WHERE timestamp < datetime('now', '-' || ? || ' days')", (days,))
                 conn.execute("DELETE FROM processed_messages WHERE processed_at < datetime('now', '-' || ? || ' days')", (days,))
                 conn.commit()
+            finally:
+                if self.db_path != ':memory:':
+                    conn.close()

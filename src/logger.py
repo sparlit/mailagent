@@ -3,6 +3,7 @@ import json
 from logging.handlers import RotatingFileHandler
 import sys
 import os
+from . import config
 
 __all__ = ['setup_logging']
 

@@ -70,10 +70,8 @@ class GmailClient:
             return "unknown"
 
     @staticmethod
-    def _get_body_text(payload):
+    def _get_body_text(payload: Dict[str, Any]) -> str:
         """
-        Recursively extract text from a Gmail message payload.
-        Prioritizes text/plain, falls back to text/html.
         Recursively extract plain text from a Gmail message payload.
         Fallbacks to text/html (stripped) if text/plain is not found.
 
@@ -85,7 +83,6 @@ class GmailClient:
         """
         body_text = ""
         html_content = ""
-        html_text = ""
         parts = payload.get('parts', [])
 
         if not parts:
@@ -94,13 +91,10 @@ class GmailClient:
             if data:
                 try:
                     decoded = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                    if mime_type == 'text/html':
-                        return re.sub('<[^<]+?>', ' ', decoded).strip()
-                    return decoded
                     if mime_type == 'text/plain':
                         return decoded
                     elif mime_type == 'text/html':
-                        return re.sub('<[^<]+?>', '', decoded)
+                        return re.sub('<[^<]+?>', '', decoded).strip()
                 except Exception:
                     pass
             return ""
@@ -117,8 +111,6 @@ class GmailClient:
             elif mime_type == 'text/html' and data:
                 try:
                     html_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                    decoded_html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                    html_text += re.sub('<[^<]+?>', '', decoded_html)
                 except Exception:
                     pass
             elif mime_type.startswith('multipart/'):
@@ -126,23 +118,9 @@ class GmailClient:
 
         if not body_text.strip() and html_content.strip():
             # Basic HTML tag stripping
-            return re.sub('<[^<]+?>', ' ', html_content).strip()
+            return re.sub('<[^<]+?>', '', html_content).strip()
 
         return body_text.strip()
-        return body_text if body_text else html_text
-        # Fallback to HTML if no plain text was found
-        if not body_text:
-            for part in parts:
-                if part.get('mimeType') == 'text/html':
-                    data = part.get('body', {}).get('data', '')
-                    if data:
-                        try:
-                            html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                            # Simple regex to strip HTML tags
-                            body_text += re.sub(r'<[^>]+>', '', html)
-                        except Exception:
-                            pass
-        return body_text
 
     def _load_credentials(self) -> Credentials:
         creds = None

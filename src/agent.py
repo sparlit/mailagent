@@ -38,13 +38,12 @@ class MailAgent:
         """
         Perform mailbox actions for a message and record corresponding statistics.
         
-        Each action in `actions` is applied to the message identified by `msg_id` using `client`. When `self.dry_run` is true, actions are not performed and are only logged. Supported actions: 'trash', 'label', 'mark_read', 'archive', 'star', 'unstar', 'mark_important'. After each attempted action a statistic is recorded in `self.db`. Exceptions raised while performing an individual action are caught and logged; they do not stop processing remaining actions.
-        
         Parameters:
-            client: Gmail client instance used to perform mailbox operations and providing `email_address`.
+            client (GmailClient): Gmail client instance to perform actions.
             msg_id (str): Identifier of the message to act on.
-            category (str): Category/label name used when applying a 'label' action and recorded with stats.
-            actions (Iterable[str]): Sequence of action names to execute, evaluated in order.
+            category (str): Category/label name used for stats and 'label' action.
+            actions (Iterable[str]): Sequence of action names to execute.
+            message_context (dict, optional): Additional context for actions like 'reply'.
         """
         for action in actions:
             try:
@@ -81,9 +80,6 @@ class MailAgent:
                         self._handle_reply_action(client, msg_id, template_id, message_context)
 
                 # Record statistic and activity log
-                self.db.record_stat(client.email_address, action, category)
-                self.db.record_activity(client.email_address, msg_id, action, category)
-                # Record statistic and log activity
                 self.db.record_stat(client.email_address, action, category)
                 self.db.log_activity(client.email_address, msg_id, action, category)
             except Exception as e:
@@ -133,14 +129,12 @@ class MailAgent:
         """
         Process a single Gmail message: classify it, execute any resulting actions, and mark it as processed.
         
-        This method checks whether the message has already been processed for the given account; if so, it skips further work. Otherwise it fetches the message, obtains a classification and list of actions from the classifier, executes any actions, and records the message as processed. If an error occurs, the function returns with no category.
-        
         Parameters:
-            gmail_client: Gmail client instance for the account that provides message access and mutation methods.
-            msg_meta (dict): Message metadata containing at least the key `'id'` with the message identifier.
-        
+            gmail_client (GmailClient): Gmail client instance for the account.
+            msg_meta (dict): Message metadata containing at least the key 'id'.
+
         Returns:
-            tuple: `(msg_id, category)` where `msg_id` is the message identifier and `category` is the classification label, or `None` if the message was skipped because it was already processed or processing failed.
+            tuple: (msg_id, category) if processed, otherwise (msg_id, None).
         """
         msg_id = msg_meta['id']
 
@@ -187,12 +181,8 @@ class MailAgent:
                         messages = messages[:limit]
 
                     logging.info(f"Found {len(messages)} unread messages in {client.email_address}")
-                    # Limit processing to MAX_MESSAGES_PER_CYCLE
-                    to_process = messages[:config.MAX_MESSAGES_PER_CYCLE]
-                    if len(messages) > config.MAX_MESSAGES_PER_CYCLE:
-                        logging.info(f"Limiting processing to first {config.MAX_MESSAGES_PER_CYCLE} messages for {client.email_address}")
 
-                    for msg in to_process:
+                    for msg in messages:
                         all_tasks.append(executor.submit(self.process_message, client, msg))
                 except Exception as e:
                     logging.error(f"Error listing messages for {client.email_address}: {e}")
@@ -209,11 +199,9 @@ class MailAgent:
         """
         Run the MailAgent loop indefinitely, processing mail periodically.
         
-        Each cycle reloads classifier rules, performs one sweep of all configured accounts, and then sleeps for the given interval. Exceptions raised during a cycle are logged and do not stop the loop. If start_dashboard is True, a dashboard is started in a separate daemon thread before the loop begins.
-        
         Parameters:
-            interval (int): Number of seconds to wait between cycles.
-            start_dashboard (bool): If True, start the dashboard in a separate daemon thread before running.
+            interval (int): Seconds to wait between cycles.
+            start_dashboard (bool, optional): Whether to start the web dashboard.
         """
         should_start_dashboard = start_dashboard if start_dashboard is not None else config.DASHBOARD_ENABLED
         if should_start_dashboard:

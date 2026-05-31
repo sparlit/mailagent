@@ -3,10 +3,12 @@ import json
 from logging.handlers import RotatingFileHandler
 import sys
 import os
+from . import config
 
 __all__ = ['setup_logging']
 
 class JsonFormatter(logging.Formatter):
+    """Custom JSON formatter for structured logging."""
     def format(self, record):
         log_record = {
             "timestamp": self.formatTime(record, self.datefmt),
@@ -19,6 +21,12 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_record)
 
 def setup_logging(log_file='mailagent.log'):
+    """
+    Configure global logging settings, including console and file handlers.
+
+    Parameters:
+        log_file (str): The filename for the rotating log file.
+    """
     logger = logging.getLogger()
 
     # Use log level from config

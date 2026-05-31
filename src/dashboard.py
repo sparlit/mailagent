@@ -16,7 +16,7 @@ HTML_TEMPLATE = '''
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; margin: 40px; }
-        table { border-collapse: collapse; width: 100%; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
         th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
         tr:hover { background-color: #f5f5f5; }
         .stats-container { margin-top: 20px; }
@@ -47,27 +47,17 @@ HTML_TEMPLATE = '''
                 <th>Action</th>
                 <th>Category</th>
             </tr>
-            {% for act in recent_activity %}
-            <tr>
-                <td>{{ act[4] }}</td>
-                <td>{{ act[0] }}</td>
-                <td>{{ act[1] }}</td>
-                <td>{{ act[2] }}</td>
-                <td>{{ act[3] }}</td>
-                <th>Timestamp</th>
-            </tr>
             {% for activity in recent_activity %}
             <tr>
+                <td>{{ activity[4] }}</td>
                 <td>{{ activity[0] }}</td>
                 <td>{{ activity[1] }}</td>
                 <td>{{ activity[2] }}</td>
                 <td>{{ activity[3] }}</td>
-                <td>{{ activity[4] }}</td>
             </tr>
             {% endfor %}
         </table>
 
-        <h2>Action Statistics (Aggregate)</h2>
         <h2>Action Statistics</h2>
         <table>
             <tr>
@@ -104,26 +94,6 @@ HTML_TEMPLATE = '''
             <tr>
                 <td>{{ cat }}</td>
                 <td>{{ count }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-
-        <h2>Recent Activity</h2>
-        <table>
-            <tr>
-                <th>Time</th>
-                <th>Account</th>
-                <th>Message ID</th>
-                <th>Action</th>
-                <th>Category</th>
-            </tr>
-            {% for activity in recent_activity %}
-            <tr>
-                <td>{{ activity[4] }}</td>
-                <td>{{ activity[0] }}</td>
-                <td>{{ activity[1] }}</td>
-                <td>{{ activity[2] }}</td>
-                <td>{{ activity[3] }}</td>
             </tr>
             {% endfor %}
         </table>
@@ -188,12 +158,6 @@ HTML_TEMPLATE = '''
 def index():
     """
     Render the dashboard page showing action statistics, recent activity, and the number of unique monitored accounts.
-    
-    Fetches current stats and recent activity from the shared database, computes the count of unique accounts from the first element of each stats row, and returns the rendered HTML template populated with `stats`, `recent_activity`, and `accounts_count`.
-    Fetches current stats and recent activity from the shared database, computes the count of unique accounts from the first element of each stats row, and returns the rendered HTML template populated with `stats`, `recent_activity` and `accounts_count`.
-    
-    Returns:
-        str: Rendered HTML for the dashboard page containing the stats table, recent activity table and `accounts_count`.
     """
     stats = db.get_stats()
     recent_activity = db.get_recent_activity(10)
@@ -204,40 +168,15 @@ def index():
         recent_activity=recent_activity,
         accounts_count=len(unique_accounts)
     )
-        str: Rendered HTML for the dashboard page containing the stats table, recent activity, and `accounts_count`.
-    """
-    stats = db.get_stats()
-    recent_activity = db.get_recent_activity(10)
-    unique_accounts = set(stat[0] for stat in stats)
-    return render_template_string(
-        HTML_TEMPLATE,
-        stats=stats,
-        recent_activity=recent_activity,
-        accounts_count=len(unique_accounts)
-    )
-    recent_activity = db.get_recent_activity(limit=10)
-    unique_accounts = set(stat[0] for stat in stats)
-    return render_template_string(HTML_TEMPLATE, stats=stats, recent_activity=recent_activity, accounts_count=len(unique_accounts))
 
 @app.route('/api/stats')
 def api_stats():
-    """
-    Return JSON-serialized action statistics retrieved from the shared database.
-    
-    Returns:
-    	Flask Response: A JSON response containing the list of statistics as returned by `db.get_stats()`.
-    """
-    stats = db.get_stats()
-    return jsonify(stats)
+    """Return JSON-serialized action statistics."""
+    return jsonify(db.get_stats())
 
 @app.route('/health')
 def health():
-    """
-    Health check endpoint.
-
-    Returns:
-        JSON: status and basic stats.
-    """
+    """Health check endpoint."""
     return jsonify({
         "status": "healthy",
         "monitoring_accounts": len(set(stat[0] for stat in db.get_stats()))

@@ -7,7 +7,6 @@ import threading
 import logging
 import json
 import base64
-import re
 from email.message import EmailMessage
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -22,6 +21,9 @@ __all__ = ['GmailClient', 'MockGmailClient']
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send']
 
 def retry_with_backoff(max_retries=5):
+    """
+    Exponential backoff decorator for retrying functions on specific API errors.
+    """
     def decorator(func):
         def wrapper(*args, **kwargs):
             retries = 0
@@ -44,6 +46,13 @@ class GmailClient:
     _thread_local = threading.local()
 
     def __init__(self, credentials_path: str = 'credentials.json', token_path: str = 'token.json') -> None:
+        """
+        Initialize the GmailClient.
+
+        Parameters:
+            credentials_path (str): Path to the OAuth 2.0 client secrets file.
+            token_path (str): Path to the user's authorized token file.
+        """
         self.credentials_path = credentials_path
         self.token_path = token_path
         self._creds = self._load_credentials()
@@ -52,12 +61,7 @@ class GmailClient:
         self.email_address = self._get_user_email()
 
     def _get_user_email(self) -> str:
-        """
-        Return the authenticated user's email address.
-        
-        Returns:
-            email (str): The user's email address; returns "unknown" if the profile lacks an emailAddress or if an error occurs while fetching the profile.
-        """
+        """Return the authenticated user's email address."""
         try:
             profile = self.service.users().getProfile(userId='me').execute()
             email = profile.get('emailAddress')
@@ -73,18 +77,15 @@ class GmailClient:
     def _get_body_text(payload):
         """
         Recursively extract text from a Gmail message payload.
-        Prioritizes text/plain, falls back to text/html.
-        Recursively extract plain text from a Gmail message payload.
-        Fallbacks to text/html (stripped) if text/plain is not found.
+        Prioritizes text/plain, falls back to text/html (stripped).
 
         Parameters:
             payload (dict): Gmail message payload or part.
 
         Returns:
-            str: Extracted text content.
+            str: Extracted plain text content.
         """
         body_text = ""
-        html_content = ""
         html_text = ""
         parts = payload.get('parts', [])
 
@@ -94,9 +95,6 @@ class GmailClient:
             if data:
                 try:
                     decoded = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                    if mime_type == 'text/html':
-                        return re.sub('<[^<]+?>', ' ', decoded).strip()
-                    return decoded
                     if mime_type == 'text/plain':
                         return decoded
                     elif mime_type == 'text/html':
@@ -116,7 +114,6 @@ class GmailClient:
                     pass
             elif mime_type == 'text/html' and data:
                 try:
-                    html_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
                     decoded_html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
                     html_text += re.sub('<[^<]+?>', '', decoded_html)
                 except Exception:
@@ -124,33 +121,14 @@ class GmailClient:
             elif mime_type.startswith('multipart/'):
                 body_text += GmailClient._get_body_text(part)
 
-        if not body_text.strip() and html_content.strip():
-            # Basic HTML tag stripping
-            return re.sub('<[^<]+?>', ' ', html_content).strip()
-
-        return body_text.strip()
-        return body_text if body_text else html_text
-        # Fallback to HTML if no plain text was found
-        if not body_text:
-            for part in parts:
-                if part.get('mimeType') == 'text/html':
-                    data = part.get('body', {}).get('data', '')
-                    if data:
-                        try:
-                            html = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-                            # Simple regex to strip HTML tags
-                            body_text += re.sub(r'<[^>]+>', '', html)
-                        except Exception:
-                            pass
-        return body_text
+        return body_text if body_text.strip() else html_text.strip()
 
     def _load_credentials(self) -> Credentials:
+        """Load or refresh the OAuth 2.0 credentials."""
         creds = None
-        # Try loading from token_path
         if os.path.exists(self.token_path):
             creds = Credentials.from_authorized_user_file(self.token_path, SCOPES)
 
-        # Fallback to environment variable for headless environments
         if not creds:
             env_token = os.getenv(f'GMAIL_TOKEN_{os.path.basename(self.token_path).upper().replace(".", "_")}')
             if env_token:
@@ -165,26 +143,22 @@ class GmailClient:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                creds_data = None
                 if os.path.exists(self.credentials_path):
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        self.credentials_path, SCOPES)
+                    flow = InstalledAppFlow.from_client_secrets_file(self.credentials_path, SCOPES)
                 else:
                     env_creds = os.getenv(f'GMAIL_CREDENTIALS_{os.path.basename(self.credentials_path).upper().replace(".", "_")}')
                     if env_creds:
                         try:
                             creds_data = json.loads(env_creds)
                             flow = InstalledAppFlow.from_client_config(creds_data, SCOPES)
-                            logging.info(f"Loaded credentials from environment for {self.credentials_path}")
                         except Exception as e:
-                            logging.error(f"Failed to load credentials from environment: {e}")
-                            raise FileNotFoundError(f"Credentials file not found at {self.credentials_path} and environment fallback failed.")
+                            logging.error(f"Failed to load credentials from env: {e}")
+                            raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
                     else:
                         raise FileNotFoundError(f"Credentials file not found at {self.credentials_path}")
 
                 creds = flow.run_local_server(port=0)
 
-            # Save the credentials
             with open(self.token_path, 'w') as token:
                 token.write(creds.to_json())
 
@@ -214,161 +188,80 @@ class GmailClient:
 
         messages = []
         next_page_token = None
-
         while True:
             results = self.service.users().messages().list(
-                userId=user_id,
-                q='is:unread',
-                pageToken=next_page_token
+                userId=user_id, q='is:unread', pageToken=next_page_token
             ).execute()
-
             messages.extend(results.get('messages', []))
             next_page_token = results.get('nextPageToken')
-
             if not next_page_token:
                 break
-
         return messages
 
     @retry_with_backoff()
     def get_message(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Get a specific message by ID, including the full payload.
-
-        Returns:
-            dict: The full Gmail message object.
-        """
+        """Get a specific message by ID, including the full payload."""
         return self.service.users().messages().get(userId=user_id, id=message_id, format='full').execute()
 
     @retry_with_backoff()
     def _modify_message_labels(self, message_id: str, add_label_ids: Optional[List[str]] = None, remove_label_ids: Optional[List[str]] = None, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Helper to modify message labels using batchModify.
-        """
+        """Helper to modify message labels using batchModify."""
         body = {'ids': [message_id]}
-        if add_label_ids:
-            body['addLabelIds'] = add_label_ids
-        if remove_label_ids:
-            body['removeLabelIds'] = remove_label_ids
+        if add_label_ids: body['addLabelIds'] = add_label_ids
+        if remove_label_ids: body['removeLabelIds'] = remove_label_ids
+        return self.service.users().messages().batchModify(userId=user_id, body=body).execute()
 
-        return self.service.users().messages().batchModify(
-            userId=user_id,
-            body=body
-        ).execute()
-
-    @retry_with_backoff()
     def mark_as_read(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
         """Mark a message as read by removing the UNREAD label."""
         return self._modify_message_labels(message_id, remove_label_ids=['UNREAD'], user_id=user_id)
 
-    @retry_with_backoff()
     def move_to_trash(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Moves the specified message to the Trash.
-        
-        Returns:
-            dict: The Gmail API response for the trashed message.
-        """
+        """Move a message to the trash."""
         return self.service.users().messages().trash(userId=user_id, id=message_id).execute()
 
-    @retry_with_backoff()
     def archive(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Archive a message by removing the `INBOX` label.
-        
-        Returns:
-            response (dict): The Gmail API response returned by the `batchModify` call.
-        """
+        """Archive a message by removing the INBOX label."""
         return self._modify_message_labels(message_id, remove_label_ids=['INBOX'], user_id=user_id)
 
-    @retry_with_backoff()
     def star(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Star a message by adding Gmail's `STARRED` label.
-        
-        Returns:
-            dict: The Gmail API response for the `batchModify` request.
-        """
+        """Star a message by adding the STARRED label."""
         return self._modify_message_labels(message_id, add_label_ids=['STARRED'], user_id=user_id)
 
-    @retry_with_backoff()
     def unstar(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Remove the STARRED label from a message.
-
-        Returns:
-            dict: The Gmail API response.
-        """
+        """Unstar a message by removing the STARRED label."""
         return self._modify_message_labels(message_id, remove_label_ids=['STARRED'], user_id=user_id)
 
-    @retry_with_backoff()
     def mark_important(self, message_id: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Add the IMPORTANT label to a message.
-
-        Returns:
-            dict: The Gmail API response.
-        """
+        """Mark a message as important by adding the IMPORTANT label."""
         return self._modify_message_labels(message_id, add_label_ids=['IMPORTANT'], user_id=user_id)
 
     @retry_with_backoff()
     def forward_message(self, message_id: str, to: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Forward a message to another recipient.
-
-        Parameters:
-            message_id (str): ID of the message to forward.
-            to (str): Recipient email address.
-            user_id (str): User identifier.
-
-        Returns:
-            dict: The Gmail API response for the sent message.
-        """
+        """Forward a message to another recipient."""
         original_msg = self.get_message(message_id, user_id=user_id)
-        body = self._get_body_text(original_msg.get('payload', {}))
-        if not body:
-            body = original_msg.get('snippet', '')
-
+        body = self._get_body_text(original_msg.get('payload', {})) or original_msg.get('snippet', '')
         subject = 'Fwd: (no subject)'
-
         for header in original_msg.get('payload', {}).get('headers', []):
             if header['name'].lower() == 'subject':
                 subject = 'Fwd: ' + header['value']
                 break
-
         message = EmailMessage()
         message.set_content(f"Forwarded message content:\n\n{body}\n\n--- Sent by MailAgent ---")
         message['To'] = to
         message['From'] = self.email_address
         message['Subject'] = subject
-
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         return self.service.users().messages().send(userId=user_id, body={'raw': encoded_message}).execute()
 
     @retry_with_backoff()
     def send_reply(self, original_message_id: str, subject: str, body: str, user_id: str = 'me') -> Dict[str, Any]:
-        """
-        Send a reply to an existing message, maintaining the thread.
-
-        Parameters:
-            original_message_id (str): ID of the message to reply to.
-            subject (str): Subject for the reply.
-            body (str): Body text for the reply.
-            user_id (str): User identifier.
-
-        Returns:
-            dict: The Gmail API response for the sent message.
-        """
+        """Send a reply to an existing message, maintaining the thread."""
         original_msg = self.get_message(original_message_id, user_id=user_id)
         thread_id = original_msg.get('threadId')
-
         headers = {h['name'].lower(): h['value'] for h in original_msg.get('payload', {}).get('headers', [])}
         message_id_header = headers.get('message-id')
         references = headers.get('references', '')
-
-        # Determine the recipient (reply-to or from)
         to = headers.get('reply-to', headers.get('from'))
-
         reply = EmailMessage()
         reply.set_content(body)
         reply['To'] = to
@@ -376,122 +269,48 @@ class GmailClient:
         reply['Subject'] = subject
         reply['In-Reply-To'] = message_id_header
         reply['References'] = f"{references} {message_id_header}".strip()
-
         encoded_message = base64.urlsafe_b64encode(reply.as_bytes()).decode()
-        return self.service.users().messages().send(
-            userId=user_id,
-            body={
-                'raw': encoded_message,
-                'threadId': thread_id
-            }
-        ).execute()
+        return self.service.users().messages().send(userId=user_id, body={'raw': encoded_message, 'threadId': thread_id}).execute()
 
     @retry_with_backoff()
     def apply_labels(self, message_id: str, label_ids: Iterable[str], user_id: str = 'me') -> Optional[Dict[str, Any]]:
-        """
-        Apply labels to the specified message, creating any custom labels that do not yet exist.
-        
-        Parameters:
-        	message_id (str): ID of the message to modify.
-        	label_ids (Iterable[str]): Iterable of label names to apply; system/category labels may be provided directly (e.g., 'INBOX', 'STARRED').
-        	user_id (str): User identifier, typically `'me'`.
-        
-        Returns:
-        	dict or None: The Gmail API `batchModify` response when labels were applied, or `None` if no labels were resolved/applied.
-        """
+        """Apply labels to a message, creating them if necessary."""
         existing_label_names = self._get_labels()
-
         final_label_ids = []
         for label_name in label_ids:
             if label_name in existing_label_names:
                 final_label_ids.append(existing_label_names[label_name])
-            elif label_name in ['INBOX', 'SPAM', 'TRASH', 'UNREAD', 'STARRED', 'IMPORTANT', 'SENT', 'DRAFT', 'CATEGORY_PERSONAL', 'CATEGORY_SOCIAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS']:
+            elif label_name in ['INBOX', 'SPAM', 'TRASH', 'UNREAD', 'STARRED', 'IMPORTANT']:
                 final_label_ids.append(label_name)
             else:
                 try:
-                    new_label = self.service.users().labels().create(
-                        userId=user_id,
-                        body={'name': label_name}
-                    ).execute()
+                    new_label = self.service.users().labels().create(userId=user_id, body={'name': label_name}).execute()
                     label_id = new_label['id']
                     final_label_ids.append(label_id)
-                    with self._labels_lock:
-                        self._labels_cache[label_name] = label_id
+                    with self._labels_lock: self._labels_cache[label_name] = label_id
                 except Exception as e:
                     logging.error(f"Error creating label {label_name}: {e}")
-
-        if not final_label_ids:
-            return
-
+        if not final_label_ids: return None
         return self._modify_message_labels(message_id, add_label_ids=final_label_ids, user_id=user_id)
 
 class MockGmailClient(GmailClient):
-    """
-    A mock Gmail client for testing and dry-run environments without real credentials.
-    Simulates common Gmail API interactions with dummy data.
-    """
+    """Mock Gmail client for dry-run environments."""
     def __init__(self, credentials_path='credentials.json', token_path='token.json'):
-        self.credentials_path = credentials_path
-        self.token_path = token_path
+        self.credentials_path, self.token_path = credentials_path, token_path
         self.email_address = f"mock_{os.path.basename(token_path).split('.')[0]}@example.com"
-        self._labels_cache = {"INBOX": "INBOX", "UNREAD": "UNREAD", "STARRED": "STARRED", "IMPORTANT": "IMPORTANT"}
-        logging.info(f"Initialized MockGmailClient for {self.email_address}")
-
+        self._labels_cache = {"INBOX": "INBOX", "UNREAD": "UNREAD"}
     @property
-    def service(self):
-        return None
-
-    def _get_user_email(self):
-        return self.email_address
-
-    def _load_credentials(self):
-        return None
-
-    def list_unread_messages(self, user_id='me'):
-        # Return a few dummy messages
-        return [{'id': f'mock_msg_{i}'} for i in range(1, 4)]
-
+    def service(self): return None
+    def _get_user_email(self): return self.email_address
+    def _load_credentials(self): return None
+    def list_unread_messages(self, user_id='me'): return [{'id': f'mock_msg_{i}'} for i in range(1, 4)]
     def get_message(self, message_id, user_id='me'):
-        return {
-            'id': message_id,
-            'snippet': 'This is a mock message for dry-run testing.',
-            'payload': {
-                'headers': [
-                    {'name': 'Subject', 'value': 'Mock Email'},
-                    {'name': 'From', 'value': 'sender@example.com'}
-                ],
-                'parts': []
-            }
-        }
-
-    def mark_as_read(self, message_id, user_id='me'):
-        logging.info(f"Mock: Marked {message_id} as read")
-        return {}
-
-    def move_to_trash(self, message_id, user_id='me'):
-        logging.info(f"Mock: Moved {message_id} to trash")
-        return {}
-
-    def archive(self, message_id, user_id='me'):
-        logging.info(f"Mock: Archived {message_id}")
-        return {}
-
-    def star(self, message_id, user_id='me'):
-        logging.info(f"Mock: Starred {message_id}")
-        return {}
-
-    def unstar(self, message_id, user_id='me'):
-        logging.info(f"Mock: Unstarred {message_id}")
-        return {}
-
-    def mark_important(self, message_id, user_id='me'):
-        logging.info(f"Mock: Marked {message_id} as important")
-        return {}
-
-    def forward_message(self, message_id, to, user_id='me'):
-        logging.info(f"Mock: Forwarded {message_id} to {to}")
-        return {}
-
-    def apply_labels(self, message_id, label_ids, user_id='me'):
-        logging.info(f"Mock: Applied labels {label_ids} to {message_id}")
-        return {}
+        return {'id': message_id, 'snippet': 'Mock snippet', 'payload': {'headers': [{'name': 'Subject', 'value': 'Mock'}, {'name': 'From', 'value': 'a@b.com'}]}}
+    def mark_as_read(self, message_id, user_id='me'): return {}
+    def move_to_trash(self, message_id, user_id='me'): return {}
+    def archive(self, message_id, user_id='me'): return {}
+    def star(self, message_id, user_id='me'): return {}
+    def unstar(self, message_id, user_id='me'): return {}
+    def mark_important(self, message_id, user_id='me'): return {}
+    def forward_message(self, message_id, to, user_id='me'): return {}
+    def apply_labels(self, message_id, label_ids, user_id='me'): return {}
